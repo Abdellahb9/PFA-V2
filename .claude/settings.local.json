@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la 2>/dev/null; echo \"---\"; ls -la \"/c/Users/RAZER/Downloads/Rapport_PFE_Assistant_IA_PHOSBOUCRAA \\(2\\).docx\" 2>/dev/null)"
+    ]
+  }
+}

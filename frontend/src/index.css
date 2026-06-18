@@ -1,0 +1,92 @@
+:root {
+  --phos-green: #00843d; /* OCP brand green */
+  --phos-green-dark: #006a31;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  background: #f5f6f8;
+}
+
+.login-card {
+  width: 380px;
+  max-width: 92vw;
+}
+
+.kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.chart-card {
+  height: 360px;
+}
+
+/* ---- Loading animations (used by AppLoader / fade-in transitions) ---- */
+@keyframes phos-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+
+@keyframes phos-bar {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+@keyframes phos-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Smooth fade-in for content once it has loaded. */
+.phos-fade-in {
+  animation: phos-fade-in 0.35s ease-out both;
+}
+
+/* Respect users who prefer reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .phos-fade-in,
+  [class*="phos-"] {
+    animation: none !important;
+  }
+}
+
+/* Screen-reader-only text (visually hidden, still announced). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

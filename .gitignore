@@ -1,0 +1,29 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+*.log
+
+# ---- Node ----
+node_modules/
+dist/
+.vite/
+*.local
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---- ML artifacts / data ----
+*.faiss
+*.pkl
+data/uploads/
+models/cache/
+
+# ---- Docker ----
+*.pid

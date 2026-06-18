@@ -1,0 +1,21 @@
+[project]
+name = "phosboucraa-assistant-ia"
+version = "0.1.0"
+description = "AI assistant for internship application management and intelligent intern assignment - OCP PHOSBOUCRAA"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "C4"]
+ignore = ["B008"]   # FastAPI uses function calls in argument defaults (Depends)
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
