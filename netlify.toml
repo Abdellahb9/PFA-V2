@@ -1,0 +1,31 @@
+# =============================================================================
+# Netlify deployment — FRONTEND ONLY (React/Vite static site).
+# The backend (FastAPI + Celery + Redis + MinIO) cannot run on Netlify; host it
+# on Render / Railway / Fly.io / a VPS and point the proxy below at its URL.
+# =============================================================================
+
+[build]
+  base = "frontend"          # the Vite app lives in frontend/
+  command = "npm run build"  # tsc + vite build
+  publish = "dist"           # output (relative to base -> frontend/dist)
+
+[build.environment]
+  NODE_VERSION = "20"
+  # The app calls the API at a relative path; Netlify proxies /api/* to the
+  # backend (see the redirect below) → same-origin, no CORS needed.
+  VITE_API_URL = "/api/v1"
+
+# --- Proxy API + auth calls to the hosted backend (Render) -----------------
+# After deploying render.yaml, the API service URL looks like
+# https://phosboucraa-api.onrender.com — replace it below if your name differs.
+[[redirects]]
+  from = "/api/*"
+  to = "https://phosboucraa-api.onrender.com/api/:splat"
+  status = 200
+  force = true
+
+# --- SPA fallback: let React Router handle client-side routes ---------------
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

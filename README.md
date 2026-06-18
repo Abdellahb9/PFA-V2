@@ -132,6 +132,52 @@ DATABASE_URL=postgresql+psycopg://postgres.<ref>:<password>@aws-0-<region>.poole
 
 ---
 
+## ☁️ Déploiement en production (Netlify + backend séparé)
+
+> **Netlify héberge uniquement le frontend statique.** Le backend (FastAPI +
+> Celery + Redis + MinIO) doit tourner sur un hébergeur de services
+> (Render / Railway / Fly.io / VPS). La base est déjà sur **Supabase**.
+
+### 1. Frontend → Netlify
+Config dans [`netlify.toml`](netlify.toml) (racine) :
+- `base = "frontend"`, `command = "npm run build"`, `publish = "dist"` ;
+- **fallback SPA** (`/* → /index.html`) pour React Router ;
+- **proxy** `/api/* → https://YOUR-BACKEND-DOMAIN/api/:splat` → le frontend appelle
+  un chemin **relatif** `/api/v1` (même origine, **pas de CORS**).
+
+Étapes : connecter le repo à Netlify (il détecte `netlify.toml`) → remplacer
+`YOUR-BACKEND-DOMAIN` par l'URL publique du backend → déployer. **Aucun Docker**
+n'est nécessaire pour le frontend.
+
+### 2. Backend → Render (Blueprint fourni)
+Un **Render Blueprint** est fourni : [`render.yaml`](render.yaml). Il provisionne
+depuis le `Dockerfile` existant :
+- **`phosboucraa-api`** (web) — applique les migrations puis lance uvicorn sur `$PORT` ;
+- **`phosboucraa-worker`** (Celery worker) ;
+- **`phosboucraa-beat`** (Celery beat — matching nocturne) ;
+- **`phosboucraa-redis`** (Redis managé, broker + backend Celery).
+
+Déploiement : Render → **New → Blueprint** → connecter ce repo → renseigner dans le
+dashboard les variables `sync: false` :
+- **`DATABASE_URL`** → Supabase (Session Pooler, mot de passe URL-encodé) ;
+- **`MINIO_ENDPOINT` / `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`** → stockage objet
+  **S3-compatible** (AWS S3, **Supabase Storage**, ou une instance MinIO) — Render
+  n'héberge pas MinIO ;
+- (optionnel) clés LLM, et `CORS_ORIGINS` si appel direct sans proxy.
+
+> Plan **standard** recommandé pour l'API et le worker (la pile NLP — torch + spaCy +
+> embeddings — nécessite ~2 Go de RAM). Le build d'image est long (~15-25 min, modèles inclus).
+
+Enfin, dans `netlify.toml`, le proxy pointe par défaut vers
+`https://phosboucraa-api.onrender.com` — ajustez si votre nom de service diffère.
+
+### Variante sans proxy (appel direct)
+Définir `VITE_API_URL=https://YOUR-BACKEND-DOMAIN/api/v1` dans Netlify et **ajouter le
+domaine Netlify à `CORS_ORIGINS`** côté backend. Recommandé si l'upload de CV approche
+la limite de taille des rewrites Netlify.
+
+---
+
 ## 🧭 Routes (frontend)
 
 | Route | Accès | Page |

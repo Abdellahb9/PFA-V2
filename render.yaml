@@ -1,0 +1,111 @@
+# =============================================================================
+# Render Blueprint — backend (FastAPI API + Celery worker/beat + Redis).
+# The frontend is deployed separately on Netlify (see netlify.toml).
+# The database is Supabase (set DATABASE_URL below). Object storage (CVs) must
+# be an S3-compatible service (AWS S3 / Supabase Storage / a MinIO instance).
+#
+# Deploy: Render Dashboard → New → Blueprint → connect this repo. Then fill the
+# values marked `sync: false` (Supabase URL, storage keys) in the dashboard.
+# =============================================================================
+
+# Variables shared by the API, the worker and the beat services.
+envVarGroups:
+  - name: phosboucraa-shared
+    envVars:
+      # --- Database (Supabase Session Pooler — URL-encode the password) ---
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_DISABLE_PREPARED_STATEMENTS
+        value: "false"            # "true" if you use the 6543 transaction pooler
+      # --- Security ---
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+      # --- AI / NLP (optional; pipeline falls back to spaCy without keys) ---
+      - key: LLM_PROVIDER
+        value: none
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      # --- Object storage (S3-compatible: AWS S3 / Supabase Storage / MinIO) ---
+      - key: MINIO_ENDPOINT
+        sync: false               # e.g. s3.amazonaws.com  or  <ref>.storage.supabase.co
+      - key: MINIO_ROOT_USER
+        sync: false               # access key
+      - key: MINIO_ROOT_PASSWORD
+        sync: false               # secret key
+      - key: MINIO_BUCKET
+        value: documents
+      - key: MINIO_SECURE
+        value: "true"
+
+services:
+  # --- Managed Redis (broker + result backend + cache) ---
+  # On newer Render this product is "Key Value"; the blueprint type stays `redis`.
+  - type: redis
+    name: phosboucraa-redis
+    plan: starter
+    maxmemoryPolicy: noeviction
+    ipAllowList: []               # private: only Render services can connect
+
+  # --- FastAPI API (web service) ---
+  - type: web
+    name: phosboucraa-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: standard                # NLP stack (torch + spaCy + embeddings) needs RAM
+    healthCheckPath: /health
+    # Apply migrations, then serve on the port Render injects.
+    dockerCommand: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    autoDeploy: true
+    envVars:
+      - fromGroup: phosboucraa-shared
+      - key: REDIS_URL
+        fromService: { type: redis, name: phosboucraa-redis, property: connectionString }
+      - key: CELERY_BROKER_URL
+        fromService: { type: redis, name: phosboucraa-redis, property: connectionString }
+      - key: CELERY_RESULT_BACKEND
+        fromService: { type: redis, name: phosboucraa-redis, property: connectionString }
+      # Only needed if the frontend calls the API directly (not via Netlify proxy).
+      # JSON list, e.g. ["https://your-site.netlify.app"]
+      - key: CORS_ORIGINS
+        sync: false
+
+  # --- Celery worker (CV analysis, matching, notifications) ---
+  - type: worker
+    name: phosboucraa-worker
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: standard
+    dockerCommand: celery -A app.core.celery_app.celery_app worker --loglevel=info --concurrency=2
+    autoDeploy: true
+    envVars:
+      - fromGroup: phosboucraa-shared
+      - key: REDIS_URL
+        fromService: { type: redis, name: phosboucraa-redis, property: connectionString }
+      - key: CELERY_BROKER_URL
+        fromService: { type: redis, name: phosboucraa-redis, property: connectionString }
+      - key: CELERY_RESULT_BACKEND
+        fromService: { type: redis, name: phosboucraa-redis, property: connectionString }
+
+  # --- Celery beat (nightly auto-matching schedule) ---
+  - type: worker
+    name: phosboucraa-beat
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    dockerCommand: celery -A app.core.celery_app.celery_app beat --loglevel=info
+    autoDeploy: true
+    envVars:
+      - fromGroup: phosboucraa-shared
+      - key: REDIS_URL
+        fromService: { type: redis, name: phosboucraa-redis, property: connectionString }
+      - key: CELERY_BROKER_URL
+        fromService: { type: redis, name: phosboucraa-redis, property: connectionString }
+      - key: CELERY_RESULT_BACKEND
+        fromService: { type: redis, name: phosboucraa-redis, property: connectionString }
