@@ -3,6 +3,7 @@
 // analysis. Returns a minimal confirmation (no candidate data echoed).
 import { z } from "zod";
 import { admin, BUCKET } from "./_shared/supabase";
+import { getOptionalUser } from "./_shared/auth";
 import { json, fail } from "./_shared/http";
 
 const schema = z.object({
@@ -51,15 +52,21 @@ export default async (req: Request): Promise<Response> => {
     return fail("Fichier trop volumineux (max 10 Mo)", 413);
   }
 
+  // Link to the signed-in candidate account if a session is present (optional).
+  const user = await getOptionalUser(req);
+
   // Reuse candidate by email, else create.
   let candidateId: number;
   const { data: existing } = await sb
     .from("candidates")
-    .select("id")
+    .select("id, user_id")
     .eq("email", b.email)
     .maybeSingle();
   if (existing) {
     candidateId = existing.id;
+    if (user && !existing.user_id) {
+      await sb.from("candidates").update({ user_id: user.id }).eq("id", candidateId);
+    }
   } else {
     const { data, error } = await sb
       .from("candidates")
@@ -71,6 +78,7 @@ export default async (req: Request): Promise<Response> => {
         field_of_study: b.field_of_study ?? null,
         education_level: b.education_level ?? null,
         university: b.university ?? null,
+        user_id: user?.id ?? null,
       })
       .select("id")
       .single();

@@ -8,9 +8,23 @@ import type {
   DashboardData,
   Department,
   MatchingResult,
+  MyApplication,
   Offer,
   PublicOffer,
 } from "./types";
+
+// ---- Candidate portal ----
+export const useMyApplications = () =>
+  useQuery({
+    queryKey: ["my-applications"],
+    queryFn: async () => (await api.get<MyApplication[]>("/my-applications")).data,
+    // Poll so the candidate sees admin status changes live.
+    refetchInterval: (query) => {
+      const data = query.state.data as MyApplication[] | undefined;
+      const inProgress = data?.some((a) => ["submitted", "parsing"].includes(a.status));
+      return inProgress ? 5000 : 20000;
+    },
+  });
 
 // ---- Public (no auth) ----
 export const usePublicOffers = () =>

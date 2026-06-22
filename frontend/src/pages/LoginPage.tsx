@@ -6,8 +6,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button, Card, Form, Input, Typography, Alert } from "antd";
 import { Navigate, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/store";
-import { login } from "@/store/authSlice";
+import { login, isStaff } from "@/store/authSlice";
 
 const schema = z.object({
   email: z.string().email("Adresse email invalide"),
@@ -18,7 +19,7 @@ type FormValues = z.infer<typeof schema>;
 export default function LoginPage() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const { isAuthenticated, loading, error } = useAppSelector((s) => s.auth);
+  const { isAuthenticated, user, loading, error } = useAppSelector((s) => s.auth);
 
   const {
     control,
@@ -29,11 +30,15 @@ export default function LoginPage() {
     defaultValues: { email: "", password: "" },
   });
 
-  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  if (isAuthenticated) {
+    return <Navigate to={isStaff(user?.role) ? "/dashboard" : "/mon-espace"} replace />;
+  }
 
   const onSubmit = async (values: FormValues) => {
     const result = await dispatch(login(values));
-    if (login.fulfilled.match(result)) navigate("/dashboard");
+    if (login.fulfilled.match(result)) {
+      navigate(isStaff(result.payload.role) ? "/dashboard" : "/mon-espace");
+    }
   };
 
   return (
@@ -93,6 +98,11 @@ export default function LoginPage() {
             Se connecter
           </Button>
         </Form>
+
+        <div style={{ textAlign: "center", marginTop: 16 }}>
+          <Typography.Text type="secondary">Vous êtes candidat ? </Typography.Text>
+          <Link to="/inscription">Créer un compte</Link>
+        </div>
       </Card>
     </div>
   );

@@ -7,7 +7,9 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLoader from "@/components/AppLoader";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import LoginPage from "@/pages/LoginPage";
+import SignupPage from "@/pages/SignupPage";
 import LandingPage from "@/pages/LandingPage";
+import CandidatePortalPage from "@/pages/CandidatePortalPage";
 import { supabase } from "@/lib/supabase";
 import { useAppDispatch } from "@/store";
 import { fetchMe, logout } from "@/store/authSlice";
@@ -50,9 +52,20 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/inscription" element={<SignupPage />} />
+        {/* Candidate portal (any authenticated user). */}
         <Route
+          path="/mon-espace"
           element={
             <ProtectedRoute>
+              <CandidatePortalPage />
+            </ProtectedRoute>
+          }
+        />
+        {/* Admin area — staff only (candidates are redirected to /mon-espace). */}
+        <Route
+          element={
+            <ProtectedRoute staffOnly>
               <AppLayout />
             </ProtectedRoute>
           }

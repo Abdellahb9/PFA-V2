@@ -1,35 +1,54 @@
-// Verify a Supabase Auth access token (Bearer) and enforce staff access.
+// Supabase Auth helpers: verify a Bearer token, resolve role, gate access.
 import { admin } from "./supabase";
 import { fail } from "./http";
+
+export type Role = "admin" | "recruiter" | "viewer" | "candidate";
 
 export interface AuthedUser {
   id: string;
   email: string | null;
-  role: "admin" | "recruiter" | "viewer";
+  role: Role;
 }
 
-/**
- * Returns the authenticated staff user, or a Response (401/403) to return as-is.
- * Usage: `const u = await requireStaff(req); if (u instanceof Response) return u;`
- */
-export async function requireStaff(req: Request): Promise<AuthedUser | Response> {
+function bearer(req: Request): string {
   const header = req.headers.get("authorization") ?? "";
-  const token = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
-  if (!token) return fail("Non authentifié", 401);
+  return header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
+}
 
+async function resolve(token: string): Promise<AuthedUser | null> {
+  if (!token) return null;
   const sb = admin();
   const { data, error } = await sb.auth.getUser(token);
-  if (error || !data.user) return fail("Session invalide", 401);
-
+  if (error || !data.user) return null;
   const { data: profile } = await sb
     .from("profiles")
     .select("role")
     .eq("id", data.user.id)
-    .single();
+    .maybeSingle();
+  // Safe default: unknown -> candidate (never staff).
+  const role = (profile?.role ?? "candidate") as Role;
+  return { id: data.user.id, email: data.user.email ?? null, role };
+}
 
-  const role = (profile?.role ?? "recruiter") as AuthedUser["role"];
-  if (role !== "admin" && role !== "recruiter") {
+/** Any authenticated user (candidate or staff), or a 401 Response. */
+export async function requireUser(req: Request): Promise<AuthedUser | Response> {
+  const user = await resolve(bearer(req));
+  return user ?? fail("Non authentifié", 401);
+}
+
+/** Staff only (admin / recruiter), or a 401/403 Response. */
+export async function requireStaff(req: Request): Promise<AuthedUser | Response> {
+  const token = bearer(req);
+  if (!token) return fail("Non authentifié", 401);
+  const user = await resolve(token);
+  if (!user) return fail("Session invalide", 401);
+  if (user.role !== "admin" && user.role !== "recruiter") {
     return fail("Accès refusé", 403);
   }
-  return { id: data.user.id, email: data.user.email ?? null, role };
+  return user;
+}
+
+/** The user if a valid token is present, else null (no error). */
+export async function getOptionalUser(req: Request): Promise<AuthedUser | null> {
+  return resolve(bearer(req));
 }

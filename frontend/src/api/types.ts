@@ -47,6 +47,21 @@ export interface Offer {
   skills: SkillRef[];
 }
 
+// Candidate portal: an applicant's own application + status timeline.
+export interface MyApplicationEvent {
+  status: ApplicationStatus;
+  note?: string | null;
+  created_at: string;
+}
+export interface MyApplication {
+  id: number;
+  status: ApplicationStatus;
+  created_at: string;
+  offer_title: string | null;
+  department_name: string | null;
+  events: MyApplicationEvent[];
+}
+
 // Public, read-only offer shown on the landing page (no auth).
 export interface PublicOffer {
   id: number;

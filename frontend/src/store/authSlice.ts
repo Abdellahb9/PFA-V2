@@ -7,8 +7,10 @@ export interface AppUser {
   id: string;
   email: string | null;
   full_name: string | null;
-  role: "admin" | "recruiter" | "viewer";
+  role: "admin" | "recruiter" | "viewer" | "candidate";
 }
+
+export const isStaff = (role?: AppUser["role"]) => role === "admin" || role === "recruiter";
 
 interface AuthState {
   user: AppUser | null;
@@ -34,7 +36,7 @@ async function loadProfile(user: SupabaseUser): Promise<AppUser> {
     id: user.id,
     email: user.email ?? null,
     full_name: profile?.full_name ?? user.email ?? null,
-    role: (profile?.role ?? "recruiter") as AppUser["role"],
+    role: (profile?.role ?? "candidate") as AppUser["role"],
   };
 }
 

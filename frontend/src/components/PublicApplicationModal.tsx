@@ -108,7 +108,10 @@ export default function PublicApplicationModal({ open, offer, onClose }: Props) 
 
     try {
       await submit.mutateAsync({ fields, file });
-      message.success("Candidature envoyée — vous recevrez un retour par email.");
+      message.success(
+        "Candidature envoyée ! Créez un compte avec cet email pour suivre son avancement.",
+        6,
+      );
       handleClose();
     } catch (err) {
       message.error(apiErrorMessage(err, "Échec de l'envoi de la candidature"));

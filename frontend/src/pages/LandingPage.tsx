@@ -107,9 +107,12 @@ function LandingContent() {
         }}
       >
         <img src={logo} alt="Phosboucraa Foundation" style={{ height: 40 }} />
-        <Button type="primary" icon={<LoginOutlined />} onClick={() => navigate("/login")}>
-          Se connecter
-        </Button>
+        <Space>
+          <Button onClick={() => navigate("/inscription")}>Créer un compte</Button>
+          <Button type="primary" icon={<LoginOutlined />} onClick={() => navigate("/login")}>
+            Se connecter
+          </Button>
+        </Space>
       </Header>
 
       <Content>
