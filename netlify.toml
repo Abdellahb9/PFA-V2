@@ -1,27 +1,30 @@
 # =============================================================================
-# Netlify — FULL serverless app: static React frontend + Netlify Functions (the
-# backend). Data on Supabase (Postgres + Storage + Auth). LLM extraction on Groq.
-# No Docker / Celery / Redis / MinIO / FastAPI.
+# Netlify — FULL serverless app: static React frontend + Netlify Functions.
+# Data on Supabase (Postgres + Storage + Auth). LLM extraction on Groq.
+#
+# Monorepo: no `base` directory (avoids ambiguous publish/functions paths).
+# All paths below are relative to the REPOSITORY ROOT.
 # =============================================================================
 
 [build]
-  base = "frontend"
-  command = "npm run build"
-  publish = "dist"
-  # Functions live in a sibling folder (relative to repo root, not base).
-  functions = "../netlify/functions"
+  # Install BOTH the frontend and the functions deps, then build the frontend.
+  command = "npm --prefix frontend install && npm --prefix netlify/functions install && cd frontend && npm run build"
+  publish = "frontend/dist"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "20"
-  # The SPA calls the API at /api/* which is rewritten to the functions below.
+  # The SPA calls the API at /api/* (functions declare their own `config.path`).
   VITE_API_URL = "/api"
+  # VITE_SUPABASE_* + SUPABASE_URL are PUBLIC by design (baked into the client
+  # bundle) -> don't let Netlify's secrets scanner fail the build.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,SUPABASE_URL,VITE_SUPABASE_ANON_KEY"
 
 [functions]
   node_bundler = "esbuild"
-  # Each function declares its own route via `export const config = { path }`.
   # The background analysis function is auto-detected by its `-background` suffix.
 
-# --- SPA fallback (function routes are matched before this) -----------------
+# --- SPA fallback (function routes /api/* are matched before this) ----------
 [[redirects]]
   from = "/*"
   to = "/index.html"
