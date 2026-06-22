@@ -1,13 +1,13 @@
 // Applications list: upload new CVs, live parsing status, view stored CV,
 // extracted skills, and matching score.
 import { useState } from "react";
-import { Card, Tag, Select, Progress, Button, Space, Tooltip, Popconfirm, message } from "antd";
+import { Card, Tag, Select, Progress, Button, Space, Popconfirm, message } from "antd";
 import { PlusOutlined, FilePdfOutlined, ReloadOutlined, DeleteOutlined } from "@ant-design/icons";
 import { useApplications, useDeleteApplication, openDocument } from "@/api/hooks";
 import { apiErrorMessage } from "@/api/client";
 import SkeletonTable from "@/components/SkeletonTable";
 import NewApplicationModal from "@/components/NewApplicationModal";
-import type { Application, ApplicationStatus, DocumentRef, SkillRef } from "@/api/types";
+import type { Application, ApplicationStatus, SkillRef } from "@/api/types";
 
 // French labels + colors for each application status.
 const STATUS_META: Record<ApplicationStatus, { label: string; color: string }> = {
@@ -26,9 +26,9 @@ export default function ApplicationsPage() {
   const { data, isLoading, isFetching } = useApplications(status);
   const deleteApp = useDeleteApplication();
 
-  const onView = async (applicationId: number, doc: DocumentRef) => {
+  const onView = async (applicationId: number) => {
     try {
-      await openDocument(applicationId, doc.id);
+      await openDocument(applicationId);
     } catch {
       message.error("Impossible d'ouvrir le document");
     }
@@ -88,24 +88,16 @@ export default function ApplicationsPage() {
         v == null ? "—" : <Progress percent={Math.round(v * 100)} size="small" style={{ width: 110 }} />,
     },
     {
-      title: "Documents",
+      title: "CV",
       key: "documents",
-      render: (_: unknown, r: Application) => (
-        <Space>
-          {(r.documents ?? []).map((doc) => (
-            <Tooltip key={doc.id} title={doc.filename}>
-              <Button
-                size="small"
-                icon={<FilePdfOutlined />}
-                onClick={() => onView(r.id, doc)}
-              >
-                {doc.kind === "cv" ? "CV" : "Lettre"}
-              </Button>
-            </Tooltip>
-          ))}
-          {!(r.documents ?? []).length && <span style={{ color: "#aaa" }}>—</span>}
-        </Space>
-      ),
+      render: (_: unknown, r: Application) =>
+        (r.documents ?? []).length ? (
+          <Button size="small" icon={<FilePdfOutlined />} onClick={() => onView(r.id)}>
+            Voir
+          </Button>
+        ) : (
+          <span style={{ color: "#aaa" }}>—</span>
+        ),
     },
     {
       title: "Reçue le",

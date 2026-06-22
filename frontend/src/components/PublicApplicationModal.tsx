@@ -95,19 +95,19 @@ export default function PublicApplicationModal({ open, offer, onClose }: Props) 
       message.error("Le CV est obligatoire");
       return;
     }
-    const fd = new FormData();
-    fd.append("first_name", values.first_name);
-    fd.append("last_name", values.last_name);
-    fd.append("email", values.email);
-    if (values.phone) fd.append("phone", values.phone);
-    if (values.field_of_study) fd.append("field_of_study", values.field_of_study);
-    if (values.education_level) fd.append("education_level", values.education_level);
-    if (values.motivation) fd.append("motivation", values.motivation);
-    if (offer) fd.append("offer_id", String(offer.id));
-    fd.append("cv", file);
+    const fields: Record<string, unknown> = {
+      first_name: values.first_name,
+      last_name: values.last_name,
+      email: values.email,
+    };
+    if (values.phone) fields.phone = values.phone;
+    if (values.field_of_study) fields.field_of_study = values.field_of_study;
+    if (values.education_level) fields.education_level = values.education_level;
+    if (values.motivation) fields.motivation = values.motivation;
+    if (offer) fields.offer_id = offer.id;
 
     try {
-      await submit.mutateAsync(fd);
+      await submit.mutateAsync({ fields, file });
       message.success("Candidature envoyée — vous recevrez un retour par email.");
       handleClose();
     } catch (err) {

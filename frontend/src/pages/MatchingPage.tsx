@@ -21,10 +21,9 @@ import { useDecideAssignment, useRunMatching } from "@/api/hooks";
 import type { AssignmentPreview, MatchingResult } from "@/api/types";
 
 export default function MatchingPage() {
-  // Weights for the composite score (semantic / skills / education).
-  const [semantic, setSemantic] = useState(0.5);
-  const [skills, setSkills] = useState(0.35);
-  const [education, setEducation] = useState(0.15);
+  // Weights for the composite score (skills + education — no embeddings).
+  const [skills, setSkills] = useState(0.7);
+  const [education, setEducation] = useState(0.3);
   const [persist, setPersist] = useState(false);
   const [result, setResult] = useState<MatchingResult | null>(null);
 
@@ -34,7 +33,7 @@ export default function MatchingPage() {
   const onRun = async () => {
     try {
       const res = await runMatching.mutateAsync({
-        weights: { semantic, skills, education },
+        weights: { skills, education },
         persist,
         min_score: 0,
       });
@@ -74,9 +73,6 @@ export default function MatchingPage() {
       key: "breakdown",
       render: (_: unknown, r: AssignmentPreview) => (
         <Space size={4}>
-          <Tooltip title="Similarité sémantique">
-            <Tag color="green">Sém {Math.round(r.score_breakdown.semantic * 100)}%</Tag>
-          </Tooltip>
           <Tooltip title="Adéquation des compétences">
             <Tag color="blue">Comp {Math.round(r.score_breakdown.skills * 100)}%</Tag>
           </Tooltip>
@@ -122,8 +118,6 @@ export default function MatchingPage() {
               critère, puis lancez l'optimisation globale.
             </p>
             <div style={{ maxWidth: 460 }}>
-              <label>Similarité sémantique (CV ↔ offre) : {semantic.toFixed(2)}</label>
-              <Slider min={0} max={1} step={0.05} value={semantic} onChange={setSemantic} />
               <label>Adéquation des compétences : {skills.toFixed(2)}</label>
               <Slider min={0} max={1} step={0.05} value={skills} onChange={setSkills} />
               <label>Niveau d'études : {education.toFixed(2)}</label>

@@ -1,9 +1,9 @@
-// React Query hooks wrapping the backend REST API.
+// React Query hooks wrapping the serverless API (Netlify Functions).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
+import { submitApplicationViaStorage } from "./upload";
 import type {
   Application,
-  ApplicationSubmitResult,
   Candidate,
   DashboardData,
   Department,
@@ -16,18 +16,13 @@ import type {
 export const usePublicOffers = () =>
   useQuery({
     queryKey: ["public-offers"],
-    queryFn: async () => (await api.get<PublicOffer[]>("/public/offers")).data,
+    queryFn: async () => (await api.get<PublicOffer[]>("/public-offers")).data,
   });
 
-// Public application submission (landing page). No auth, no admin-query invalidation.
 export const useSubmitPublicApplication = () =>
   useMutation({
-    mutationFn: async (form: FormData) =>
-      (
-        await api.post<ApplicationSubmitResult>("/applications", form, {
-          headers: { "Content-Type": "multipart/form-data" },
-        })
-      ).data,
+    mutationFn: ({ fields, file }: { fields: Record<string, unknown>; file: File }) =>
+      submitApplicationViaStorage(fields, file),
   });
 
 // ---- Dashboard ----
@@ -118,26 +113,18 @@ export const useApplications = (status?: string) =>
     queryKey: ["applications", status],
     queryFn: async () =>
       (await api.get<Application[]>("/applications", { params: { status } })).data,
-    // Poll while any application is still being parsed so the UI updates live.
     refetchInterval: (query) => {
       const data = query.state.data as Application[] | undefined;
-      const inProgress = data?.some((a) =>
-        ["submitted", "parsing"].includes(a.status)
-      );
-      return inProgress ? 3000 : false;
+      const inProgress = data?.some((a) => ["submitted", "parsing"].includes(a.status));
+      return inProgress ? 4000 : false;
     },
   });
 
-// Submit a new application with a CV (and optional cover letter) as multipart.
 export const useSubmitApplication = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (form: FormData) =>
-      (
-        await api.post<ApplicationSubmitResult>("/applications", form, {
-          headers: { "Content-Type": "multipart/form-data" },
-        })
-      ).data,
+    mutationFn: ({ fields, file }: { fields: Record<string, unknown>; file: File }) =>
+      submitApplicationViaStorage(fields, file),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["applications"] });
       qc.invalidateQueries({ queryKey: ["candidates"] });
@@ -158,36 +145,27 @@ export const useDeleteApplication = () => {
   });
 };
 
-// Fetch a stored document as a blob (auth header required) and open it in a tab.
-export const openDocument = async (
-  applicationId: number,
-  documentId: number
-): Promise<void> => {
-  const res = await api.get(
-    `/applications/${applicationId}/documents/${documentId}/download`,
-    { responseType: "blob" }
-  );
-  const url = URL.createObjectURL(res.data as Blob);
-  window.open(url, "_blank");
-  // Revoke shortly after to give the new tab time to load.
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+// Open the stored CV in a new tab via a short-lived signed URL.
+export const openDocument = async (applicationId: number): Promise<void> => {
+  const { data } = await api.get<{ url: string }>(`/applications/${applicationId}/cv-url`);
+  window.open(data.url, "_blank");
 };
 
 // ---- Matching ----
 export const useRunMatching = () =>
   useMutation({
     mutationFn: async (body: {
-      weights: { semantic: number; skills: number; education: number };
+      weights: { skills: number; education: number };
       persist: boolean;
       min_score: number;
-    }) => (await api.post<MatchingResult>("/matching/run", body)).data,
+    }) => (await api.post<MatchingResult>("/matching-run", body)).data,
   });
 
 export const useDecideAssignment = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) =>
-      (await api.patch(`/matching/assignments/${id}`, null, { params: { status } })).data,
+      (await api.patch(`/assignments/${id}`, { status })).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["applications"] });

@@ -38,23 +38,20 @@ export default function NewApplicationModal({ open, onClose }: Props) {
       return;
     }
 
-    // Build multipart payload matching the backend Form fields.
-    const fd = new FormData();
-    fd.append("first_name", values.first_name);
-    fd.append("last_name", values.last_name);
-    fd.append("email", values.email);
-    if (values.phone) fd.append("phone", values.phone);
-    if (values.field_of_study) fd.append("field_of_study", values.field_of_study);
-    if (values.education_level) fd.append("education_level", values.education_level);
-    if (values.university) fd.append("university", values.university);
-    if (values.motivation) fd.append("motivation", values.motivation);
-    if (values.offer_id) fd.append("offer_id", String(values.offer_id));
-    fd.append("cv", cvFile);
-    const coverFile = values.cover_letter?.[0]?.originFileObj as File | undefined;
-    if (coverFile) fd.append("cover_letter", coverFile);
+    const fields: Record<string, unknown> = {
+      first_name: values.first_name,
+      last_name: values.last_name,
+      email: values.email,
+    };
+    if (values.phone) fields.phone = values.phone;
+    if (values.field_of_study) fields.field_of_study = values.field_of_study;
+    if (values.education_level) fields.education_level = values.education_level;
+    if (values.university) fields.university = values.university;
+    if (values.motivation) fields.motivation = values.motivation;
+    if (values.offer_id) fields.offer_id = values.offer_id;
 
     try {
-      await submit.mutateAsync(fd);
+      await submit.mutateAsync({ fields, file: cvFile });
       message.success("Candidature soumise — analyse du CV en cours…");
       form.resetFields();
       onClose();
@@ -133,37 +130,17 @@ export default function NewApplicationModal({ open, onClose }: Props) {
           <Input.TextArea rows={2} />
         </Form.Item>
 
-        <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item
-              name="cv"
-              label="CV (PDF/DOCX)"
-              valuePropName="fileList"
-              getValueFromEvent={normFile}
-              rules={[{ required: true, message: "Le CV est obligatoire" }]}
-            >
-              <Upload
-                beforeUpload={() => false}
-                maxCount={1}
-                accept=".pdf,.docx"
-              >
-                <Button icon={<UploadOutlined />}>Choisir le CV</Button>
-              </Upload>
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item
-              name="cover_letter"
-              label="Lettre de motivation (optionnel)"
-              valuePropName="fileList"
-              getValueFromEvent={normFile}
-            >
-              <Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx">
-                <Button icon={<UploadOutlined />}>Choisir le fichier</Button>
-              </Upload>
-            </Form.Item>
-          </Col>
-        </Row>
+        <Form.Item
+          name="cv"
+          label="CV (PDF/DOCX, max 10 Mo)"
+          valuePropName="fileList"
+          getValueFromEvent={normFile}
+          rules={[{ required: true, message: "Le CV est obligatoire" }]}
+        >
+          <Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx">
+            <Button icon={<UploadOutlined />}>Choisir le CV</Button>
+          </Upload>
+        </Form.Item>
       </Form>
     </Modal>
   );

@@ -22,6 +22,11 @@ envVarGroups:
         generateValue: true
       - key: ENVIRONMENT
         value: production
+      # --- Bootstrap admin (created on first deploy by the seeder) ---
+      - key: FIRST_ADMIN_EMAIL
+        value: admin@phosboucraa.ma
+      - key: FIRST_ADMIN_PASSWORD
+        sync: false               # set a strong password in the dashboard
       # --- AI / NLP (optional; pipeline falls back to spaCy without keys) ---
       - key: LLM_PROVIDER
         value: none

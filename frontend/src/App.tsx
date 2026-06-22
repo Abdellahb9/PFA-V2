@@ -1,8 +1,4 @@
-// Route definitions: public login + protected dashboard area.
-// LoginPage is imported statically (no Suspense before login -> no splash for
-// logged-out users). Internal pages are lazy-loaded; their Suspense fallback
-// lives in the layout (around <Outlet/>), and an ErrorBoundary wraps everything
-// so a failed chunk never leaves an infinite loader.
+// Routing: public landing + login, protected admin area (Supabase Auth).
 import { lazy, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
@@ -12,11 +8,10 @@ import AppLoader from "@/components/AppLoader";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import LoginPage from "@/pages/LoginPage";
 import LandingPage from "@/pages/LandingPage";
-import { ACCESS_TOKEN_KEY } from "@/api/client";
+import { supabase } from "@/lib/supabase";
 import { useAppDispatch } from "@/store";
-import { fetchMe } from "@/store/authSlice";
+import { fetchMe, logout } from "@/store/authSlice";
 
-// Internal pages are code-split (only reachable once authenticated).
 const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
 const CandidatesPage = lazy(() => import("@/pages/CandidatesPage"));
 const DepartmentsPage = lazy(() => import("@/pages/DepartmentsPage"));
@@ -24,25 +19,28 @@ const OffersPage = lazy(() => import("@/pages/OffersPage"));
 const ApplicationsPage = lazy(() => import("@/pages/ApplicationsPage"));
 const MatchingPage = lazy(() => import("@/pages/MatchingPage"));
 
+// Detect a persisted Supabase session synchronously to avoid a splash flash
+// for logged-out visitors (the token lives under an `sb-*-auth-token` key).
+const hasPersistedSession = () =>
+  Object.keys(localStorage).some((k) => k.startsWith("sb-") && k.endsWith("-auth-token"));
+
 export default function App() {
   const dispatch = useAppDispatch();
-  // Only "boot" (show the splash) when there is actually a session to hydrate.
-  // No token -> false from the very first render -> straight to the routes.
-  const [booting, setBooting] = useState(
-    () => Boolean(localStorage.getItem(ACCESS_TOKEN_KEY))
-  );
+  const [booting, setBooting] = useState(hasPersistedSession);
 
   useEffect(() => {
-    if (!localStorage.getItem(ACCESS_TOKEN_KEY)) return; // nothing to hydrate
-    // Safety net: never stay on the splash for more than a few seconds, even if
-    // the request hangs (network/proxy issue).
-    const safety = window.setTimeout(() => setBooting(false), 6000);
-    // `.finally` runs on BOTH success and failure (RTK thunks never reject).
-    dispatch(fetchMe()).finally(() => {
-      window.clearTimeout(safety);
-      setBooting(false);
+    if (hasPersistedSession()) {
+      const safety = window.setTimeout(() => setBooting(false), 6000);
+      dispatch(fetchMe()).finally(() => {
+        window.clearTimeout(safety);
+        setBooting(false);
+      });
+    }
+    // Keep Redux in sync if the session ends elsewhere.
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") dispatch(logout());
     });
-    return () => window.clearTimeout(safety);
+    return () => sub.subscription.unsubscribe();
   }, [dispatch]);
 
   if (booting) return <AppLoader />;
@@ -50,7 +48,6 @@ export default function App() {
   return (
     <ErrorBoundary>
       <Routes>
-        {/* Public routes (static imports -> no Suspense, no splash). */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route
@@ -60,8 +57,6 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          {/* Lazy internal pages: their Suspense fallback is the layout's
-              <Suspense> around <Outlet/> (the sidebar stays visible). */}
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/candidatures" element={<ApplicationsPage />} />
           <Route path="/candidats" element={<CandidatesPage />} />

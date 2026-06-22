@@ -1,10 +1,17 @@
-// Redux Toolkit slice holding auth state (token presence + current user).
-import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { api, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY } from "@/api/client";
-import type { AuthTokens, User } from "@/api/types";
+// Redux auth slice backed by Supabase Auth.
+import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
+
+export interface AppUser {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  role: "admin" | "recruiter" | "viewer";
+}
 
 interface AuthState {
-  user: User | null;
+  user: AppUser | null;
   isAuthenticated: boolean;
   loading: boolean;
   error: string | null;
@@ -12,55 +19,58 @@ interface AuthState {
 
 const initialState: AuthState = {
   user: null,
-  isAuthenticated: Boolean(localStorage.getItem(ACCESS_TOKEN_KEY)),
+  isAuthenticated: false,
   loading: false,
   error: null,
 };
 
-// Login: OAuth2 password flow expects form-encoded "username"/"password".
+async function loadProfile(user: SupabaseUser): Promise<AppUser> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role, full_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    full_name: profile?.full_name ?? user.email ?? null,
+    role: (profile?.role ?? "recruiter") as AppUser["role"],
+  };
+}
+
 export const login = createAsyncThunk(
   "auth/login",
   async (creds: { email: string; password: string }, { rejectWithValue }) => {
-    try {
-      const form = new URLSearchParams();
-      form.append("username", creds.email);
-      form.append("password", creds.password);
-      const { data } = await api.post<AuthTokens>("/auth/login", form, {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      });
-      localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
-      localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
-      const me = await api.get<User>("/auth/me");
-      return me.data;
-    } catch {
-      return rejectWithValue("Email ou mot de passe incorrect");
-    }
-  }
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: creds.email,
+      password: creds.password,
+    });
+    if (error || !data.user) return rejectWithValue("Email ou mot de passe incorrect");
+    return await loadProfile(data.user);
+  },
 );
 
-export const fetchMe = createAsyncThunk("auth/me", async () => {
-  const { data } = await api.get<User>("/auth/me");
-  return data;
+export const fetchMe = createAsyncThunk("auth/me", async (_, { rejectWithValue }) => {
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) return rejectWithValue("Aucune session");
+  return await loadProfile(data.user);
+});
+
+export const logout = createAsyncThunk("auth/logout", async () => {
+  await supabase.auth.signOut();
 });
 
 const authSlice = createSlice({
   name: "auth",
   initialState,
-  reducers: {
-    logout(state) {
-      localStorage.removeItem(ACCESS_TOKEN_KEY);
-      localStorage.removeItem(REFRESH_TOKEN_KEY);
-      state.user = null;
-      state.isAuthenticated = false;
-    },
-  },
+  reducers: {},
   extraReducers: (builder) => {
     builder
       .addCase(login.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(login.fulfilled, (state, action: PayloadAction<User>) => {
+      .addCase(login.fulfilled, (state, action: PayloadAction<AppUser>) => {
         state.loading = false;
         state.user = action.payload;
         state.isAuthenticated = true;
@@ -69,16 +79,19 @@ const authSlice = createSlice({
         state.loading = false;
         state.error = (action.payload as string) ?? "Erreur de connexion";
       })
-      .addCase(fetchMe.fulfilled, (state, action: PayloadAction<User>) => {
+      .addCase(fetchMe.fulfilled, (state, action: PayloadAction<AppUser>) => {
         state.user = action.payload;
         state.isAuthenticated = true;
       })
       .addCase(fetchMe.rejected, (state) => {
-        state.isAuthenticated = false;
         state.user = null;
+        state.isAuthenticated = false;
+      })
+      .addCase(logout.fulfilled, (state) => {
+        state.user = null;
+        state.isAuthenticated = false;
       });
   },
 });
 
-export const { logout } = authSlice.actions;
 export default authSlice.reducer;

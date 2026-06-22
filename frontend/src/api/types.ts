@@ -111,10 +111,9 @@ export interface Application {
 }
 
 export interface ScoreBreakdown {
-  semantic: number;
   skills: number;
   education: number;
-  weights: { semantic: number; skills: number; education: number };
+  weights: { skills: number; education: number };
 }
 
 export interface AssignmentPreview {
