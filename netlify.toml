@@ -13,7 +13,9 @@
   functions = "netlify/functions"
 
 [build.environment]
-  NODE_VERSION = "20"
+  # Node 22 has native global WebSocket — required by @supabase/supabase-js
+  # (the realtime client crashes on Node 20: "without native WebSocket support").
+  NODE_VERSION = "22"
   # The SPA calls the API at /api/* (functions declare their own `config.path`).
   VITE_API_URL = "/api"
   # VITE_SUPABASE_* + SUPABASE_URL are PUBLIC by design (baked into the client
