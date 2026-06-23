@@ -96,8 +96,20 @@ export default function NewApplicationModal({ open, onClose }: Props) {
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item name="phone" label="Téléphone">
-              <Input placeholder="+212 6 12 34 56 78" />
+            <Form.Item
+              name="phone"
+              label="Téléphone"
+              // Strip anything that isn't a digit / phone separator on input.
+              getValueFromEvent={(e) => e.target.value.replace(/[^\d+\s().-]/g, "")}
+              rules={[
+                { required: true, message: "Téléphone requis" },
+                {
+                  pattern: /^\+?[0-9\s().-]{6,}$/,
+                  message: "Numéro invalide (chiffres uniquement)",
+                },
+              ]}
+            >
+              <Input inputMode="tel" placeholder="+212 6 12 34 56 78" />
             </Form.Item>
           </Col>
         </Row>
