@@ -1,10 +1,12 @@
 // Matching page: configure weights, run the Hungarian optimisation,
 // review proposed assignments and confirm/reject them.
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Button,
   Card,
   Col,
+  Collapse,
+  Empty,
   Row,
   Slider,
   Statistic,
@@ -108,6 +110,29 @@ export default function MatchingPage() {
     },
   ];
 
+  // Per-offer table: drop the redundant offer/department columns.
+  const groupColumns = columns.filter(
+    (c) => c.key !== "offer_title" && c.key !== "department_name",
+  );
+
+  // Group the proposed assignments by offer.
+  type Group = { offerId: number; title: string; dept: string; items: AssignmentPreview[] };
+  const grouped = useMemo<Group[]>(() => {
+    if (!result) return [];
+    const map = new Map<number, Group>();
+    for (const a of result.assignments) {
+      const g = map.get(a.offer_id) ?? {
+        offerId: a.offer_id,
+        title: a.offer_title,
+        dept: a.department_name,
+        items: [],
+      };
+      g.items.push(a);
+      map.set(a.offer_id, g);
+    }
+    return [...map.values()];
+  }, [result]);
+
   return (
     <div>
       <Card title="Moteur d'affectation intelligente (Algorithme Hongrois)">
@@ -163,13 +188,46 @@ export default function MatchingPage() {
       </Card>
 
       {result && (
-        <Card title="Affectations proposées" style={{ marginTop: 16 }}>
-          <Table<AssignmentPreview>
-            rowKey="application_id"
-            dataSource={result.assignments}
-            columns={columns}
-            pagination={{ pageSize: 10 }}
-          />
+        <Card
+          title={`Affectations proposées par offre (${grouped.length} offre${
+            grouped.length > 1 ? "s" : ""
+          })`}
+          style={{ marginTop: 16 }}
+        >
+          {grouped.length === 0 ? (
+            <Empty description="Aucune affectation proposée" />
+          ) : (
+            <Collapse
+              defaultActiveKey={grouped.map((g) => String(g.offerId))}
+              items={grouped.map((g) => {
+                const avg = Math.round(
+                  (g.items.reduce((s, i) => s + i.match_score, 0) / g.items.length) * 100,
+                );
+                return {
+                  key: String(g.offerId),
+                  label: (
+                    <Space wrap>
+                      <strong>{g.title}</strong>
+                      <Tag>{g.dept}</Tag>
+                      <Tag color="blue">
+                        {g.items.length} candidat{g.items.length > 1 ? "s" : ""}
+                      </Tag>
+                      <Tag color="green">score moyen {avg}%</Tag>
+                    </Space>
+                  ),
+                  children: (
+                    <Table<AssignmentPreview>
+                      rowKey="application_id"
+                      dataSource={g.items}
+                      columns={groupColumns}
+                      pagination={false}
+                      size="small"
+                    />
+                  ),
+                };
+              })}
+            />
+          )}
         </Card>
       )}
     </div>
