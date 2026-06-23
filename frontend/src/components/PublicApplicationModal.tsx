@@ -32,7 +32,10 @@ const schema = z.object({
   first_name: z.string().min(1, "Prénom requis"),
   last_name: z.string().min(1, "Nom requis"),
   email: z.string().email("Adresse email invalide"),
-  phone: z.string().optional(),
+  phone: z
+    .string()
+    .min(1, "Téléphone requis")
+    .regex(/^\+?[0-9\s().-]{6,}$/, "Numéro invalide (chiffres uniquement)"),
   field_of_study: z.string().optional(),
   education_level: z.string().optional(),
   motivation: z.string().optional(),
@@ -187,11 +190,26 @@ export default function PublicApplicationModal({ open, offer, onClose }: Props) 
             </Form.Item>
           </Col>
           <Col xs={24} sm={12}>
-            <Form.Item label="Téléphone">
+            <Form.Item
+              label="Téléphone"
+              required
+              validateStatus={errors.phone ? "error" : ""}
+              help={errors.phone?.message}
+            >
               <Controller
                 name="phone"
                 control={control}
-                render={({ field }) => <Input {...field} placeholder="+212 6 12 34 56 78" />}
+                render={({ field }) => (
+                  <Input
+                    {...field}
+                    inputMode="tel"
+                    placeholder="+212 6 12 34 56 78"
+                    // Keep only digits and phone separators (no letters).
+                    onChange={(e) =>
+                      field.onChange(e.target.value.replace(/[^\d+\s().-]/g, ""))
+                    }
+                  />
+                )}
               />
             </Form.Item>
           </Col>
