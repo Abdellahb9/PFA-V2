@@ -33,11 +33,15 @@ export const usePublicOffers = () =>
     queryFn: async () => (await api.get<PublicOffer[]>("/public-offers")).data,
   });
 
-export const useSubmitPublicApplication = () =>
-  useMutation({
+export const useSubmitPublicApplication = () => {
+  const qc = useQueryClient();
+  return useMutation({
     mutationFn: ({ fields, file }: { fields: Record<string, unknown>; file: File }) =>
       submitApplicationViaStorage(fields, file),
+    // Refresh the candidate's own list if they applied while signed in.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["my-applications"] }),
   });
+};
 
 // ---- Dashboard ----
 export const useDashboard = () =>

@@ -5,6 +5,7 @@ import { LogoutOutlined, FileDoneOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useMyApplications } from "@/api/hooks";
 import FadeIn from "@/components/FadeIn";
+import OffersBrowser from "@/components/OffersBrowser";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { logout } from "@/store/authSlice";
 import type { ApplicationStatus, MyApplication } from "@/api/types";
@@ -103,24 +104,25 @@ export default function CandidatePortalPage() {
         </Button>
       </Header>
 
-      <Content style={{ maxWidth: 880, width: "100%", margin: "0 auto", padding: 24 }}>
-        <Typography.Title level={3}>
-          Bonjour {user?.full_name ?? ""}
-        </Typography.Title>
+      <Content style={{ maxWidth: 1100, width: "100%", margin: "0 auto", padding: 24 }}>
+        <Typography.Title level={3}>Bonjour {user?.full_name ?? ""}</Typography.Title>
         <Typography.Paragraph type="secondary">
-          Suivez ici l'avancement de vos candidatures.
+          Suivez vos candidatures et postulez à de nouvelles offres.
         </Typography.Paragraph>
 
+        {/* --- My applications --- */}
+        <Typography.Title level={4} style={{ marginTop: 8 }}>
+          Mes candidatures
+        </Typography.Title>
         {isLoading ? (
-          <div style={{ textAlign: "center", padding: 60 }} role="status" aria-busy="true">
+          <div style={{ textAlign: "center", padding: 40 }} role="status" aria-busy="true">
             <Spin size="large" />
           </div>
         ) : !data?.length ? (
-          <Empty description="Aucune candidature pour le moment.">
-            <Button type="primary" onClick={() => navigate("/")}>
-              Voir les offres de stage
-            </Button>
-          </Empty>
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="Vous n'avez pas encore postulé. Choisissez une offre ci-dessous."
+          />
         ) : (
           <FadeIn>
             {data.map((app) => (
@@ -128,6 +130,12 @@ export default function CandidatePortalPage() {
             ))}
           </FadeIn>
         )}
+
+        {/* --- Available offers (apply directly) --- */}
+        <Typography.Title level={4} style={{ marginTop: 32 }}>
+          Offres de stage disponibles
+        </Typography.Title>
+        <OffersBrowser />
       </Content>
     </Layout>
   );
