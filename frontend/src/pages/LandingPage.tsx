@@ -10,6 +10,7 @@ import {
   ConfigProvider,
   Empty,
   Layout,
+  Modal,
   Row,
   Skeleton,
   Space,
@@ -22,6 +23,7 @@ import {
   ArrowRightOutlined,
   TeamOutlined,
   BankOutlined,
+  FileTextOutlined,
 } from "@ant-design/icons";
 import { usePublicOffers } from "@/api/hooks";
 import FadeIn from "@/components/FadeIn";
@@ -39,10 +41,12 @@ function OfferCard({
   offer,
   green,
   onApply,
+  onDetails,
 }: {
   offer: PublicOffer;
   green: string;
   onApply: () => void;
+  onDetails: () => void;
 }) {
   return (
     <Card
@@ -66,9 +70,14 @@ function OfferCard({
             <Tag key={s.name}>{s.name}</Tag>
           ))}
         </Space>
-        <Button type="link" style={{ padding: 0 }} onClick={onApply}>
-          Postuler <ArrowRightOutlined />
-        </Button>
+        <Space>
+          <Button size="small" icon={<FileTextOutlined />} onClick={onDetails}>
+            Détails
+          </Button>
+          <Button type="primary" size="small" onClick={onApply}>
+            Postuler <ArrowRightOutlined />
+          </Button>
+        </Space>
       </Space>
     </Card>
   );
@@ -86,6 +95,9 @@ function LandingContent() {
     setApplyOffer(offer);
     setApplyOpen(true);
   };
+
+  // Offer details modal.
+  const [detailsOffer, setDetailsOffer] = useState<PublicOffer | null>(null);
 
   const scrollToOffers = () =>
     document.getElementById("offres")?.scrollIntoView({ behavior: "smooth" });
@@ -192,6 +204,7 @@ function LandingContent() {
                       offer={offer}
                       green={token.colorPrimary}
                       onApply={() => openApply(offer)}
+                      onDetails={() => setDetailsOffer(offer)}
                     />
                   </Col>
                 ))}
@@ -258,6 +271,57 @@ function LandingContent() {
           </Text>
         </Space>
       </Footer>
+
+      {/* --- Offer details modal --- */}
+      <Modal
+        open={Boolean(detailsOffer)}
+        title={detailsOffer?.title}
+        onCancel={() => setDetailsOffer(null)}
+        width={560}
+        footer={[
+          <Button key="close" onClick={() => setDetailsOffer(null)}>
+            Fermer
+          </Button>,
+          <Button
+            key="apply"
+            type="primary"
+            onClick={() => {
+              const offer = detailsOffer;
+              setDetailsOffer(null);
+              if (offer) openApply(offer);
+            }}
+          >
+            Postuler
+          </Button>,
+        ]}
+      >
+        {detailsOffer && (
+          <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+            <Text type="secondary">
+              {detailsOffer.department_name ?? "—"}
+              {detailsOffer.field ? ` · ${detailsOffer.field}` : ""}
+              {` · ${detailsOffer.slots} poste${detailsOffer.slots > 1 ? "s" : ""}`}
+            </Text>
+            <Paragraph style={{ whiteSpace: "pre-line", marginBottom: 0 }}>
+              {detailsOffer.description?.trim() || "Aucune description fournie pour cette offre."}
+            </Paragraph>
+            {detailsOffer.skills.length > 0 && (
+              <div>
+                <Text strong>Compétences requises</Text>
+                <div style={{ marginTop: 6 }}>
+                  <Space size={[4, 8]} wrap>
+                    {detailsOffer.skills.map((s) => (
+                      <Tag key={s.name} color={token.colorPrimary}>
+                        {s.name}
+                      </Tag>
+                    ))}
+                  </Space>
+                </div>
+              </div>
+            )}
+          </Space>
+        )}
+      </Modal>
 
       <PublicApplicationModal
         open={applyOpen}
