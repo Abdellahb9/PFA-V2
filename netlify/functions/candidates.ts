@@ -7,6 +7,9 @@ import { json, fail, readBody } from "./_shared/http";
 export const config = { path: ["/api/candidates", "/api/candidates/:id"] };
 
 const SELECT =
+  "id, first_name, last_name, email, phone, education_level, field_of_study, university, years_experience, cv_text, candidate_skills(weight, skill:skills(name))";
+// Detail/notes variant — requires migration 0004 (candidates.notes).
+const SELECT_DETAIL =
   "id, first_name, last_name, email, phone, education_level, field_of_study, university, years_experience, notes, cv_text, candidate_skills(weight, skill:skills(name))";
 
 function serialize(c: any) {
@@ -43,7 +46,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
       .from("candidates")
       .update({ notes: b.notes ?? null })
       .eq("id", id)
-      .select(SELECT)
+      .select(SELECT_DETAIL)
       .maybeSingle();
     if (error) return fail(error.message, 500);
     return data ? json(serialize(data)) : fail("Candidat introuvable", 404);
@@ -52,7 +55,11 @@ export default async (req: Request, context: Context): Promise<Response> => {
   if (req.method !== "GET") return fail("Méthode non autorisée", 405);
 
   if (id) {
-    const { data, error } = await sb.from("candidates").select(SELECT).eq("id", id).maybeSingle();
+    const { data, error } = await sb
+      .from("candidates")
+      .select(SELECT_DETAIL)
+      .eq("id", id)
+      .maybeSingle();
     if (error) return fail(error.message, 500);
     if (!data) return fail("Candidat introuvable", 404);
     // Include the candidate's applications (the CRM "relationship" timeline).
