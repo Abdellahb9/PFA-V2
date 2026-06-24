@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-nv-bg text-nv-text font-sans antialiased;
+  }
+  /* Faint "network/infrastructure" pattern over the near-black canvas. */
+  .nv-canvas {
+    background-color: #0a0a0a;
+    background-image:
+      radial-gradient(circle at 18% 12%, rgba(118, 185, 0, 0.06), transparent 38%),
+      radial-gradient(circle at 85% 0%, rgba(74, 158, 255, 0.05), transparent 40%),
+      linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+  }
+}
+
+@layer utilities {
+  /* Hide scrollbar for horizontal tab strips on small screens. */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Custom range/checkbox accent. */
+input[type="checkbox"] {
+  accent-color: #76b900;
+}
