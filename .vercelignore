@@ -1,0 +1,8 @@
+# Other project + legacy backend — not part of the Vercel deployment.
+nvidia-models-clone
+backend
+
+# Build artifacts / deps (Vercel installs/builds fresh).
+**/node_modules
+frontend/dist
+**/*.tsbuildinfo
