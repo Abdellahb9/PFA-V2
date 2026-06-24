@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import { submitApplicationViaStorage } from "./upload";
 import type {
+  AdminUser,
   Application,
   Candidate,
+  CandidateDetail,
   DashboardData,
   Department,
   MatchingResult,
@@ -125,6 +127,60 @@ export const useCandidates = (search?: string) =>
     queryFn: async () =>
       (await api.get<Candidate[]>("/candidates", { params: { search } })).data,
   });
+
+// CRM detail (fiche): candidate + applications + notes.
+export const useCandidate = (id: number | null) =>
+  useQuery({
+    queryKey: ["candidate", id],
+    queryFn: async () => (await api.get<CandidateDetail>(`/candidates/${id}`)).data,
+    enabled: id != null,
+  });
+
+export const useUpdateCandidateNotes = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, notes }: { id: number; notes: string }) =>
+      (await api.patch<CandidateDetail>(`/candidates/${id}`, { notes })).data,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["candidate", data.id] });
+      qc.invalidateQueries({ queryKey: ["candidates"] });
+    },
+  });
+};
+
+// ---- Users (admin only) ----
+export const useUsers = () =>
+  useQuery({
+    queryKey: ["users"],
+    queryFn: async () => (await api.get<AdminUser[]>("/users")).data,
+  });
+
+export const useCreateUser = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      email: string;
+      password: string;
+      full_name: string;
+      role: string;
+    }) => (await api.post("/users", body)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+};
+
+export const useUpdateUser = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: { role?: string; is_active?: boolean };
+    }) => (await api.patch(`/users/${id}`, body)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+};
 
 // ---- Applications ----
 export const useApplications = (status?: string) =>

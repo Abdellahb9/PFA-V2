@@ -1,13 +1,13 @@
-// /api/candidates  ·  /api/candidates/:id   (admin, read)
+// /api/candidates  ·  /api/candidates/:id   (admin: read + internal notes)
 import type { Context } from "@netlify/functions";
 import { admin } from "./_shared/supabase";
 import { requireStaff } from "./_shared/auth";
-import { json, fail } from "./_shared/http";
+import { json, fail, readBody } from "./_shared/http";
 
 export const config = { path: ["/api/candidates", "/api/candidates/:id"] };
 
 const SELECT =
-  "id, first_name, last_name, email, phone, education_level, field_of_study, university, years_experience, cv_text, candidate_skills(weight, skill:skills(name))";
+  "id, first_name, last_name, email, phone, education_level, field_of_study, university, years_experience, notes, cv_text, candidate_skills(weight, skill:skills(name))";
 
 function serialize(c: any) {
   const skills = (c.candidate_skills ?? [])
@@ -24,6 +24,7 @@ function serialize(c: any) {
     field_of_study: c.field_of_study,
     university: c.university,
     years_experience: c.years_experience,
+    notes: c.notes ?? null,
     skills,
     has_embedding: Boolean(c.cv_text), // "analysé" — pas d'embeddings en serverless
   };
@@ -32,14 +33,42 @@ function serialize(c: any) {
 export default async (req: Request, context: Context): Promise<Response> => {
   const user = await requireStaff(req);
   if (user instanceof Response) return user;
-  if (req.method !== "GET") return fail("Méthode non autorisée", 405);
   const sb = admin();
   const id = context.params.id ? Number(context.params.id) : null;
+
+  // Update internal admin notes on a candidate.
+  if (req.method === "PATCH" && id) {
+    const b = await readBody(req);
+    const { data, error } = await sb
+      .from("candidates")
+      .update({ notes: b.notes ?? null })
+      .eq("id", id)
+      .select(SELECT)
+      .maybeSingle();
+    if (error) return fail(error.message, 500);
+    return data ? json(serialize(data)) : fail("Candidat introuvable", 404);
+  }
+
+  if (req.method !== "GET") return fail("Méthode non autorisée", 405);
 
   if (id) {
     const { data, error } = await sb.from("candidates").select(SELECT).eq("id", id).maybeSingle();
     if (error) return fail(error.message, 500);
-    return data ? json(serialize(data)) : fail("Candidat introuvable", 404);
+    if (!data) return fail("Candidat introuvable", 404);
+    // Include the candidate's applications (the CRM "relationship" timeline).
+    const { data: apps } = await sb
+      .from("applications")
+      .select("id, status, match_score, created_at, offer:offers(title)")
+      .eq("candidate_id", id)
+      .order("created_at", { ascending: false });
+    const applications = (apps ?? []).map((a: any) => ({
+      id: a.id,
+      status: a.status,
+      match_score: a.match_score,
+      created_at: a.created_at,
+      offer_title: a.offer?.title ?? null,
+    }));
+    return json({ ...serialize(data), applications });
   }
 
   const search = new URL(req.url).searchParams.get("search");

@@ -9,6 +9,7 @@ import {
   DeploymentUnitOutlined,
   LogoutOutlined,
   UserOutlined,
+  UsergroupAddOutlined,
 } from "@ant-design/icons";
 import { Suspense } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -27,12 +28,15 @@ const NAV = [
   { key: "/offres", icon: <SolutionOutlined />, label: "Offres de stage" },
   { key: "/matching", icon: <DeploymentUnitOutlined />, label: "Affectation IA" },
 ];
+// Admin-only navigation item (user management).
+const ADMIN_NAV = { key: "/utilisateurs", icon: <UsergroupAddOutlined />, label: "Utilisateurs" };
 
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.auth.user);
+  const navItems = user?.role === "admin" ? [...NAV, ADMIN_NAV] : NAV;
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -53,7 +57,7 @@ export default function AppLayout() {
           theme="dark"
           mode="inline"
           selectedKeys={[location.pathname]}
-          items={NAV}
+          items={navItems}
           onClick={(e) => navigate(e.key)}
         />
       </Sider>

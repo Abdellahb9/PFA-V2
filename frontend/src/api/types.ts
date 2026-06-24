@@ -84,8 +84,36 @@ export interface Candidate {
   field_of_study?: string | null;
   university?: string | null;
   years_experience: number;
+  notes?: string | null;
   skills: SkillRef[];
   has_embedding: boolean;
+}
+
+// A candidate's application as shown on the CRM detail (fiche).
+export interface CandidateApplicationRef {
+  id: number;
+  status: ApplicationStatus;
+  match_score?: number | null;
+  created_at: string;
+  offer_title: string | null;
+}
+
+export interface CandidateDetail extends Candidate {
+  applications: CandidateApplicationRef[];
+}
+
+// Admin user-management row (account + role + activity).
+export interface AdminUser {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  role: "admin" | "recruiter" | "viewer" | "candidate";
+  is_active: boolean;
+  email_confirmed: boolean;
+  created_at: string;
+  last_sign_in_at: string | null;
+  candidate_id: number | null;
+  application_count: number;
 }
 
 export type ApplicationStatus =
