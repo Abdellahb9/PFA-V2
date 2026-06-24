@@ -131,6 +131,22 @@ export interface ScoreBreakdown {
   weights: { skills: number; education: number };
 }
 
+export interface RankedCandidate {
+  application_id: number;
+  candidate_id: number;
+  candidate_name: string;
+  match_score: number;
+  score_breakdown: ScoreBreakdown;
+}
+
+export interface OfferRanking {
+  offer_id: number;
+  offer_title: string;
+  department_name: string;
+  slots: number;
+  candidates: RankedCandidate[];
+}
+
 export interface AssignmentPreview {
   application_id: number;
   candidate_id: number;

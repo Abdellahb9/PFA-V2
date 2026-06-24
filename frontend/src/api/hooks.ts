@@ -10,6 +10,7 @@ import type {
   MatchingResult,
   MyApplication,
   Offer,
+  OfferRanking,
   PublicOffer,
 } from "./types";
 
@@ -187,6 +188,31 @@ export const useDecideAssignment = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["applications"] });
+    },
+  });
+};
+
+// Per-offer ranking of all compatible candidates (fetched on demand).
+export const useOfferRankings = (
+  weights: { skills: number; education: number },
+  enabled: boolean,
+) =>
+  useQuery({
+    queryKey: ["offer-rankings", weights],
+    queryFn: async () =>
+      (await api.get<OfferRanking[]>("/offer-rankings", { params: weights })).data,
+    enabled,
+  });
+
+// Manually assign a candidate (application) to a chosen offer.
+export const useAssignCandidate = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { application_id: number; offer_id: number }) =>
+      (await api.post("/assignments", body)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["applications"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 };

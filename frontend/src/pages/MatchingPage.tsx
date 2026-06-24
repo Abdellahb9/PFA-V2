@@ -9,18 +9,26 @@ import {
   Empty,
   Row,
   Slider,
+  Spin,
   Statistic,
   Switch,
   Table,
   Tag,
   Tooltip,
+  Typography,
   Progress,
   Space,
   message,
 } from "antd";
-import { ThunderboltOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
-import { useDecideAssignment, useRunMatching } from "@/api/hooks";
-import type { AssignmentPreview, MatchingResult } from "@/api/types";
+import { ThunderboltOutlined, CheckOutlined, CloseOutlined, TrophyOutlined } from "@ant-design/icons";
+import {
+  useAssignCandidate,
+  useDecideAssignment,
+  useOfferRankings,
+  useRunMatching,
+} from "@/api/hooks";
+import { apiErrorMessage } from "@/api/client";
+import type { AssignmentPreview, MatchingResult, RankedCandidate } from "@/api/types";
 
 export default function MatchingPage() {
   // Weights for the composite score (skills + education — no embeddings).
@@ -28,9 +36,22 @@ export default function MatchingPage() {
   const [education, setEducation] = useState(0.3);
   const [persist, setPersist] = useState(false);
   const [result, setResult] = useState<MatchingResult | null>(null);
+  const [showRankings, setShowRankings] = useState(false);
 
   const runMatching = useRunMatching();
   const decide = useDecideAssignment();
+  const rankings = useOfferRankings({ skills, education }, showRankings);
+  const assign = useAssignCandidate();
+
+  const onAssign = async (applicationId: number, offerId: number) => {
+    try {
+      await assign.mutateAsync({ application_id: applicationId, offer_id: offerId });
+      message.success("Candidat proposé sur cette offre");
+      rankings.refetch();
+    } catch (err) {
+      message.error(apiErrorMessage(err, "Affectation impossible"));
+    }
+  };
 
   const onRun = async () => {
     try {
@@ -133,6 +154,43 @@ export default function MatchingPage() {
     return [...map.values()];
   }, [result]);
 
+  // Columns for the per-offer ranking (every compatible candidate, with manual assign).
+  const rankingColumns = (offerId: number) => [
+    { title: "Candidat", dataIndex: "candidate_name", key: "candidate_name" },
+    {
+      title: "Score",
+      dataIndex: "match_score",
+      key: "match_score",
+      render: (v: number) => (
+        <Progress percent={Math.round(v * 100)} size="small" style={{ width: 110 }} />
+      ),
+    },
+    {
+      title: "Détail du score",
+      key: "breakdown",
+      render: (_: unknown, r: RankedCandidate) => (
+        <Space size={4}>
+          <Tag color="blue">Comp {Math.round(r.score_breakdown.skills * 100)}%</Tag>
+          <Tag color="gold">Étud {Math.round(r.score_breakdown.education * 100)}%</Tag>
+        </Space>
+      ),
+    },
+    {
+      title: "Action",
+      key: "action",
+      render: (_: unknown, r: RankedCandidate) => (
+        <Button
+          size="small"
+          type="primary"
+          loading={assign.isPending}
+          onClick={() => onAssign(r.application_id, offerId)}
+        >
+          Affecter
+        </Button>
+      ),
+    },
+  ];
+
   return (
     <div>
       <Card title="Moteur d'affectation intelligente (Algorithme Hongrois)">
@@ -230,6 +288,60 @@ export default function MatchingPage() {
           )}
         </Card>
       )}
+
+      {/* Per-offer ranking of ALL compatible candidates (independent of the global run). */}
+      <Card
+        title="Classement des candidats par offre"
+        style={{ marginTop: 16 }}
+        extra={
+          <Button
+            icon={<TrophyOutlined />}
+            loading={rankings.isFetching}
+            onClick={() => (showRankings ? rankings.refetch() : setShowRankings(true))}
+          >
+            {showRankings ? "Recalculer" : "Calculer le classement"}
+          </Button>
+        }
+      >
+        {!showRankings ? (
+          <Typography.Text type="secondary">
+            Pour chaque offre, classe <strong>tous</strong> les candidats compatibles (même non
+            affectés), du meilleur score au moins bon. Vous pouvez affecter manuellement
+            n'importe quel candidat à l'offre. Cliquez sur « Calculer le classement ».
+          </Typography.Text>
+        ) : rankings.isLoading ? (
+          <div style={{ textAlign: "center", padding: 40 }} role="status" aria-busy="true">
+            <Spin size="large" />
+          </div>
+        ) : !rankings.data?.length ? (
+          <Empty description="Aucune offre ouverte" />
+        ) : (
+          <Collapse
+            items={rankings.data.map((r) => ({
+              key: String(r.offer_id),
+              label: (
+                <Space wrap>
+                  <strong>{r.offer_title}</strong>
+                  <Tag>{r.department_name}</Tag>
+                  <Tag color="purple">{r.slots} poste{r.slots > 1 ? "s" : ""}</Tag>
+                  <Tag color="blue">
+                    {r.candidates.length} candidat{r.candidates.length > 1 ? "s" : ""}
+                  </Tag>
+                </Space>
+              ),
+              children: (
+                <Table<RankedCandidate>
+                  rowKey="application_id"
+                  dataSource={r.candidates}
+                  columns={rankingColumns(r.offer_id)}
+                  pagination={{ pageSize: 10 }}
+                  size="small"
+                />
+              ),
+            }))}
+          />
+        )}
+      </Card>
     </div>
   );
 }
