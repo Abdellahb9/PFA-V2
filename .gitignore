@@ -28,3 +28,12 @@ models/cache/
 
 # ---- Docker ----
 *.pid
+
+.vercel
+.env*
+
+# Generated Vercel API bundle (built by scripts/bundle-api.mjs)
+api/_handler.cjs
+
+# Local Netlify folder
+.netlify

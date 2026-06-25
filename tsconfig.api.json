@@ -11,5 +11,5 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["api/**/*.ts", "netlify/functions/*.ts", "netlify/functions/_shared/*.ts"]
+  "include": ["vercel-src/**/*.ts", "netlify/functions/*.ts", "netlify/functions/_shared/*.ts"]
 }
