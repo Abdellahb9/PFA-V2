@@ -2,8 +2,7 @@
   "name": "pfa-vercel",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
-  "description": "Vercel deployment wrapper for the PFA app (frontend + api/ functions).",
+  "description": "Vercel deployment wrapper for the PFA app (frontend + api/ functions). CommonJS so Vercel/esbuild bundles the api/ functions (no runtime ESM resolution).",
   "scripts": {
     "vercel-build": "npm --prefix frontend install && npm --prefix frontend run build"
   },
