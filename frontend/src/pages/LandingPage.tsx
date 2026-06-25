@@ -35,7 +35,7 @@ const { Header, Content, Footer } = Layout;
 const { Title, Paragraph, Text } = Typography;
 
 // Phosboucraa Foundation brand green (overrides the admin theme locally).
-const FOUNDATION_GREEN = "#3DBB5E";
+const FOUNDATION_GREEN = "#76B900"; // NVIDIA brand green (dark theme accent)
 
 function OfferCard({
   offer,
@@ -103,11 +103,11 @@ function LandingContent() {
     document.getElementById("offres")?.scrollIntoView({ behavior: "smooth" });
 
   return (
-    <Layout style={{ minHeight: "100vh", background: token.colorBgContainer }}>
+    <Layout style={{ minHeight: "100vh", background: "#0A0A0A" }}>
       {/* --- Navbar --- */}
       <Header
         style={{
-          background: token.colorBgContainer,
+          background: "#0A0A0A",
           borderBottom: `1px solid ${token.colorBorderSecondary}`,
           display: "flex",
           alignItems: "center",
@@ -131,7 +131,9 @@ function LandingContent() {
         {/* --- Hero --- */}
         <section
           style={{
-            background: `linear-gradient(135deg, ${token.colorPrimary} 0%, #0f3d22 100%)`,
+            background:
+              "radial-gradient(circle at 50% 0%, rgba(118,185,0,0.14) 0%, #0A0A0A 60%)",
+            borderBottom: "1px solid #2A2A2A",
             color: "#fff",
             padding: "88px 24px",
           }}
@@ -157,12 +159,8 @@ function LandingContent() {
                   size="large"
                   icon={<ArrowRightOutlined />}
                   onClick={scrollToOffers}
-                  style={{
-                    background: "#fff",
-                    color: token.colorPrimary,
-                    fontWeight: 600,
-                    border: "none",
-                  }}
+                  type="primary"
+                  style={{ color: "#0A0A0A", fontWeight: 600 }}
                 >
                   Voir les offres de stage
                 </Button>
@@ -335,7 +333,17 @@ function LandingContent() {
 export default function LandingPage() {
   // Scope the Foundation green so AntD components + tokens use it here only.
   return (
-    <ConfigProvider theme={{ token: { colorPrimary: FOUNDATION_GREEN, colorLink: FOUNDATION_GREEN } }}>
+    <ConfigProvider
+      theme={{
+        algorithm: theme.darkAlgorithm,
+        token: {
+          colorPrimary: FOUNDATION_GREEN,
+          colorLink: FOUNDATION_GREEN,
+          colorBgContainer: "#161616",
+          colorBorderSecondary: "#2A2A2A",
+        },
+      }}
+    >
       <LandingContent />
     </ConfigProvider>
   );

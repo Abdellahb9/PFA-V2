@@ -26,6 +26,13 @@
   node_bundler = "esbuild"
   # The background analysis function is auto-detected by its `-background` suffix.
 
+# --- Local dev (`netlify dev`): run the Vite app in frontend/ + functions -----
+[dev]
+  command = "npm --prefix frontend run dev"
+  targetPort = 5173
+  framework = "#custom"
+  publish = "frontend/dist"
+
 # --- SPA fallback (function routes /api/* are matched before this) ----------
 [[redirects]]
   from = "/*"

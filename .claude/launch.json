@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev", "--prefix", "nvidia-models-clone", "--", "--port", "5199", "--strictPort"],
       "port": 5199,
       "autoPort": false
+    },
+    {
+      "name": "pfa-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend", "--", "--port", "5173", "--strictPort"],
+      "port": 5173,
+      "autoPort": false
     }
   ]
 }

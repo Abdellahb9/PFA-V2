@@ -84,19 +84,19 @@ export default function CandidatePortalPage() {
   };
 
   return (
-    <Layout style={{ minHeight: "100vh", background: "#f5f6f8" }}>
+    <Layout style={{ minHeight: "100vh", background: "#0A0A0A" }}>
       <Header
         style={{
-          background: "#fff",
+          background: "#0A0A0A",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           paddingInline: 24,
-          borderBottom: "1px solid #eee",
+          borderBottom: "1px solid #2A2A2A",
         }}
       >
-        <span style={{ fontWeight: 700 }}>
-          <FileDoneOutlined style={{ color: "#3DBB5E", marginRight: 8 }} />
+        <span style={{ fontWeight: 700, color: "#fff" }}>
+          <FileDoneOutlined style={{ color: "#76B900", marginRight: 8 }} />
           Mon espace candidat
         </span>
         <Button icon={<LogoutOutlined />} onClick={onLogout}>

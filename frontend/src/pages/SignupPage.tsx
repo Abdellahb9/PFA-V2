@@ -66,7 +66,8 @@ export default function SignupPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "linear-gradient(135deg, #00843d 0%, #024d24 100%)",
+        background:
+          "radial-gradient(circle at 50% -10%, rgba(118,185,0,0.18) 0%, #0A0A0A 55%)",
         padding: 24,
       }}
     >

@@ -64,7 +64,8 @@ export default function AppLayout() {
       <Layout>
         <Header
           style={{
-            background: "#fff",
+            background: "#0A0A0A",
+            borderBottom: "1px solid #2A2A2A",
             display: "flex",
             justifyContent: "flex-end",
             alignItems: "center",
@@ -87,7 +88,7 @@ export default function AppLayout() {
             }}
           >
             <div style={{ cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
-              <Avatar icon={<UserOutlined />} style={{ background: "#00843d" }} />
+              <Avatar icon={<UserOutlined />} style={{ background: "#76B900", color: "#0A0A0A" }} />
               <Typography.Text>{user?.full_name ?? "Utilisateur"}</Typography.Text>
             </div>
           </Dropdown>
