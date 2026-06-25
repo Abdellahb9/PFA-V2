@@ -60,6 +60,22 @@ const routes: Route[] = [
 
 export default async function handler(req: Request): Promise<Response> {
   const { pathname } = new URL(req.url);
+
+  // Diagnostic endpoint — does NOT touch Supabase, so it succeeds even if env
+  // vars are missing. Reveals whether the function can see its configuration.
+  if (pathname === "/api/health") {
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        node: process.version,
+        hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+        hasServiceKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+        hasGroqKey: Boolean(process.env.GROQ_API_KEY),
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
+
   for (const r of routes) {
     const m = pathname.match(r.re);
     if (!m) continue;
