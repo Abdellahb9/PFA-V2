@@ -58,8 +58,32 @@ const routes: Route[] = [
   { re: /^\/api\/analyze-application-background\/?$/, fn: analyzeBackground },
 ];
 
+// Vercel passes a RELATIVE req.url (just the path); the Web Request spec and the
+// reused handlers expect an absolute URL. Rebuild one from the forwarded host.
+function toAbsolute(req: Request): string {
+  if (/^https?:\/\//i.test(req.url)) return req.url;
+  const host = req.headers.get("host") ?? "localhost";
+  const proto = (req.headers.get("x-forwarded-proto") ?? "https").split(",")[0];
+  const path = req.url.startsWith("/") ? req.url : `/${req.url}`;
+  return `${proto}://${host}${path}`;
+}
+
+function withUrl(req: Request, url: string): Request {
+  if (url === req.url) return req;
+  const init: RequestInit & { duplex?: "half" } = {
+    method: req.method,
+    headers: req.headers,
+  };
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    init.body = req.body;
+    init.duplex = "half";
+  }
+  return new Request(url, init);
+}
+
 export default async function handler(req: Request): Promise<Response> {
-  const { pathname } = new URL(req.url);
+  const absUrl = toAbsolute(req);
+  const { pathname } = new URL(absUrl);
 
   // Diagnostic endpoint — does NOT touch Supabase, so it succeeds even if env
   // vars are missing. Reveals whether the function can see its configuration.
@@ -81,7 +105,16 @@ export default async function handler(req: Request): Promise<Response> {
     if (!m) continue;
     const params: Record<string, string> = {};
     (r.keys ?? []).forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
-    return r.fn(req, { params });
+    try {
+      return await r.fn(withUrl(req, absUrl), { params });
+    } catch (e) {
+      // Surface the real error as JSON instead of a generic crash.
+      const detail = e instanceof Error ? e.message : "Erreur serveur";
+      return new Response(JSON.stringify({ detail }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      });
+    }
   }
   return new Response(JSON.stringify({ detail: "Route introuvable" }), {
     status: 404,
