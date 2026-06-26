@@ -40,7 +40,12 @@ export default function AppLayout() {
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Sider breakpoint="lg" collapsedWidth="0" theme="dark">
+      <Sider
+        breakpoint="lg"
+        collapsedWidth="0"
+        theme="dark"
+        style={{ backdropFilter: "blur(6px)", borderRight: "1px solid #2A2A2A" }}
+      >
         <div
           style={{
             color: "#fff",
@@ -79,8 +84,8 @@ export default function AppLayout() {
                   key: "logout",
                   icon: <LogoutOutlined />,
                   label: "Se déconnecter",
-                  onClick: () => {
-                    dispatch(logout());
+                  onClick: async () => {
+                    await dispatch(logout());
                     navigate("/login");
                   },
                 },

@@ -78,8 +78,8 @@ export default function CandidatePortalPage() {
   const user = useAppSelector((s) => s.auth.user);
   const { data, isLoading } = useMyApplications();
 
-  const onLogout = () => {
-    dispatch(logout());
+  const onLogout = async () => {
+    await dispatch(logout());
     navigate("/");
   };
 

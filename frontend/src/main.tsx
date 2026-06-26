@@ -37,12 +37,17 @@ const nvidiaTheme = {
     fontFamily: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
   },
   components: {
-    // Transparent body/header so the fixed BackgroundLayer (constellation) shows
-    // through; the sider stays an opaque panel.
-    Layout: { siderBg: "#161616", headerBg: "transparent", bodyBg: "transparent", triggerBg: "#1F1F1F" },
+    // Transparent body/header + translucent sider so the fixed BackgroundLayer
+    // (constellation) shows through; cards stay opaque panels.
+    Layout: {
+      siderBg: "rgba(16,16,18,0.55)",
+      headerBg: "transparent",
+      bodyBg: "transparent",
+      triggerBg: "#1F1F1F",
+    },
     Menu: {
-      darkItemBg: "#161616",
-      darkSubMenuItemBg: "#0A0A0A",
+      darkItemBg: "transparent",
+      darkSubMenuItemBg: "transparent",
       darkItemSelectedBg: "rgba(118,185,0,0.16)",
       darkItemSelectedColor: "#76B900",
       darkItemHoverColor: "#FFFFFF",

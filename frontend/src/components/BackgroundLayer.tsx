@@ -23,7 +23,7 @@ export default function BackgroundLayer() {
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(120% 60% at 50% 100%, rgba(118,185,0,0.14) 0%, rgba(118,185,0,0.04) 35%, transparent 70%)",
+            "radial-gradient(120% 65% at 50% 100%, rgba(118,185,0,0.22) 0%, rgba(118,185,0,0.09) 38%, transparent 72%)",
         }}
       />
     </div>
