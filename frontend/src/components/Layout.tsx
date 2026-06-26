@@ -64,7 +64,7 @@ export default function AppLayout() {
       <Layout>
         <Header
           style={{
-            background: "#0A0A0A",
+            background: "transparent",
             borderBottom: "1px solid #2A2A2A",
             display: "flex",
             justifyContent: "flex-end",

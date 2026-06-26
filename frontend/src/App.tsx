@@ -3,6 +3,7 @@ import { lazy, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import AppLayout from "@/components/Layout";
+import BackgroundLayer from "@/components/BackgroundLayer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLoader from "@/components/AppLoader";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -50,6 +51,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      <BackgroundLayer />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />

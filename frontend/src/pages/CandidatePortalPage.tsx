@@ -84,10 +84,10 @@ export default function CandidatePortalPage() {
   };
 
   return (
-    <Layout style={{ minHeight: "100vh", background: "#0A0A0A" }}>
+    <Layout style={{ minHeight: "100vh", background: "transparent" }}>
       <Header
         style={{
-          background: "#0A0A0A",
+          background: "transparent",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",

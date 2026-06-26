@@ -49,7 +49,7 @@ export default function LoginPage() {
         alignItems: "center",
         justifyContent: "center",
         background:
-          "radial-gradient(circle at 50% -10%, rgba(118,185,0,0.18) 0%, #0A0A0A 55%)",
+          "radial-gradient(circle at 50% -10%, rgba(118,185,0,0.18) 0%, transparent 55%)",
       }}
     >
       <Card className="login-card">

@@ -103,11 +103,11 @@ function LandingContent() {
     document.getElementById("offres")?.scrollIntoView({ behavior: "smooth" });
 
   return (
-    <Layout style={{ minHeight: "100vh", background: "#0A0A0A" }}>
+    <Layout style={{ minHeight: "100vh", background: "transparent" }}>
       {/* --- Navbar --- */}
       <Header
         style={{
-          background: "#0A0A0A",
+          background: "transparent",
           borderBottom: `1px solid ${token.colorBorderSecondary}`,
           display: "flex",
           alignItems: "center",
@@ -132,7 +132,7 @@ function LandingContent() {
         <section
           style={{
             background:
-              "radial-gradient(circle at 50% 0%, rgba(118,185,0,0.14) 0%, #0A0A0A 60%)",
+              "radial-gradient(circle at 50% 0%, rgba(118,185,0,0.16) 0%, transparent 60%)",
             borderBottom: "1px solid #2A2A2A",
             color: "#fff",
             padding: "88px 24px",
