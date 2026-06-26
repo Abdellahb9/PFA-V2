@@ -1,6 +1,7 @@
 // Vercel catch-all that reuses the existing Netlify v2 handlers unchanged.
 // Each handler is `(req: Request, ctx: { params }) => Response`; here we parse
 // the path params from the URL and dispatch, mirroring Netlify's `config.path`.
+import type { IncomingMessage, ServerResponse } from "node:http";
 import departments from "../netlify/functions/departments";
 import offers from "../netlify/functions/offers";
 import applications from "../netlify/functions/applications";
@@ -58,32 +59,10 @@ const routes: Route[] = [
   { re: /^\/api\/analyze-application-background\/?$/, fn: analyzeBackground },
 ];
 
-// Vercel passes a RELATIVE req.url (just the path); the Web Request spec and the
-// reused handlers expect an absolute URL. Rebuild one from the forwarded host.
-function toAbsolute(req: Request): string {
-  if (/^https?:\/\//i.test(req.url)) return req.url;
-  const host = req.headers.get("host") ?? "localhost";
-  const proto = (req.headers.get("x-forwarded-proto") ?? "https").split(",")[0];
-  const path = req.url.startsWith("/") ? req.url : `/${req.url}`;
-  return `${proto}://${host}${path}`;
-}
-
-function withUrl(req: Request, url: string): Request {
-  if (url === req.url) return req;
-  const init: RequestInit & { duplex?: "half" } = {
-    method: req.method,
-    headers: req.headers,
-  };
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    init.body = req.body;
-    init.duplex = "half";
-  }
-  return new Request(url, init);
-}
-
-export default async function handler(req: Request): Promise<Response> {
-  const absUrl = toAbsolute(req);
-  const { pathname } = new URL(absUrl);
+// Web-standard router (what the reused Netlify handlers expect). The Request
+// here is already absolute and proper (built by nodeToRequest).
+export async function webHandler(request: Request): Promise<Response> {
+  const { pathname } = new URL(request.url);
 
   // Diagnostic endpoint — does NOT touch Supabase, so it succeeds even if env
   // vars are missing. Reveals whether the function can see its configuration.
@@ -106,9 +85,8 @@ export default async function handler(req: Request): Promise<Response> {
     const params: Record<string, string> = {};
     (r.keys ?? []).forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
     try {
-      return await r.fn(withUrl(req, absUrl), { params });
+      return await r.fn(request, { params });
     } catch (e) {
-      // Surface the real error as JSON instead of a generic crash.
       const detail = e instanceof Error ? e.message : "Erreur serveur";
       return new Response(JSON.stringify({ detail }), {
         status: 500,
@@ -120,4 +98,50 @@ export default async function handler(req: Request): Promise<Response> {
     status: 404,
     headers: { "content-type": "application/json" },
   });
+}
+
+const HOP_BY_HOP = new Set(["connection", "keep-alive", "transfer-encoding", "content-length"]);
+
+// Build a proper Web Request from Vercel's Node-style request.
+async function nodeToRequest(req: IncomingMessage): Promise<Request> {
+  const host = (req.headers.host as string | undefined) ?? "localhost";
+  const xf = req.headers["x-forwarded-proto"];
+  const proto = (Array.isArray(xf) ? xf[0] : xf ?? "https").split(",")[0];
+  const url = `${proto}://${host}${req.url ?? "/"}`;
+  const method = (req.method ?? "GET").toUpperCase();
+
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (v == null || HOP_BY_HOP.has(k.toLowerCase())) continue;
+    if (Array.isArray(v)) v.forEach((x) => headers.append(k, x));
+    else headers.set(k, String(v));
+  }
+
+  const init: RequestInit = { method, headers };
+  if (method !== "GET" && method !== "HEAD") {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    const buf = Buffer.concat(chunks);
+    // Node Buffer is a valid runtime body; cast around the DOM lib typing.
+    if (buf.length) init.body = buf as unknown as BodyInit;
+  }
+  return new Request(url, init);
+}
+
+// Vercel (CommonJS) invokes functions with the Node (req, res) signature — bridge
+// it to the Web handler and write the Web Response back to res.
+export default async function nodeHandler(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const response = await webHandler(await nodeToRequest(req));
+    res.statusCode = response.status;
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    res.end(Buffer.from(await response.arrayBuffer()));
+  } catch (e) {
+    res.statusCode = 500;
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ detail: e instanceof Error ? e.message : "Erreur serveur" }));
+  }
 }
