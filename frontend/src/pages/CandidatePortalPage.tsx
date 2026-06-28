@@ -7,7 +7,7 @@ import { useMyApplications } from "@/api/hooks";
 import FadeIn from "@/components/FadeIn";
 import OffersBrowser from "@/components/OffersBrowser";
 import { useAppDispatch, useAppSelector } from "@/store";
-import { logout } from "@/store/authSlice";
+import { logout, sessionCleared } from "@/store/authSlice";
 import type { ApplicationStatus, MyApplication } from "@/api/types";
 
 const { Header, Content } = Layout;
@@ -78,9 +78,10 @@ export default function CandidatePortalPage() {
   const user = useAppSelector((s) => s.auth.user);
   const { data, isLoading } = useMyApplications();
 
-  const onLogout = async () => {
-    await dispatch(logout());
-    navigate("/");
+  const onLogout = () => {
+    dispatch(sessionCleared()); // instant UI logout
+    dispatch(logout()); // background Supabase sign-out
+    navigate("/login");
   };
 
   return (

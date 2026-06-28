@@ -14,7 +14,7 @@ import {
 import { Suspense } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/store";
-import { logout } from "@/store/authSlice";
+import { logout, sessionCleared } from "@/store/authSlice";
 import RouteFallback from "@/components/RouteFallback";
 
 const { Header, Sider, Content } = Layout;
@@ -84,8 +84,9 @@ export default function AppLayout() {
                   key: "logout",
                   icon: <LogoutOutlined />,
                   label: "Se déconnecter",
-                  onClick: async () => {
-                    await dispatch(logout());
+                  onClick: () => {
+                    dispatch(sessionCleared()); // instant UI logout
+                    dispatch(logout()); // background Supabase sign-out
                     navigate("/login");
                   },
                 },

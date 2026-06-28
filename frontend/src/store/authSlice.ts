@@ -70,7 +70,15 @@ export const logout = createAsyncThunk("auth/logout", async () => {
 const authSlice = createSlice({
   name: "auth",
   initialState,
-  reducers: {},
+  reducers: {
+    // Synchronous, instant logout of the UI (route guards react immediately);
+    // the network signOut runs separately in the background.
+    sessionCleared: (state) => {
+      state.user = null;
+      state.isAuthenticated = false;
+      state.error = null;
+    },
+  },
   extraReducers: (builder) => {
     builder
       .addCase(login.pending, (state) => {
@@ -105,4 +113,5 @@ const authSlice = createSlice({
   },
 });
 
+export const { sessionCleared } = authSlice.actions;
 export default authSlice.reducer;
