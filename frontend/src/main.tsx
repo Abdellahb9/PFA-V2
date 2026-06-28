@@ -40,7 +40,7 @@ const nvidiaTheme = {
     // Transparent body/header + translucent sider so the fixed BackgroundLayer
     // (constellation) shows through; cards stay opaque panels.
     Layout: {
-      siderBg: "rgba(16,16,18,0.55)",
+      siderBg: "rgba(16,16,18,0.8)",
       headerBg: "transparent",
       bodyBg: "transparent",
       triggerBg: "#1F1F1F",

@@ -44,7 +44,7 @@ export default function AppLayout() {
         breakpoint="lg"
         collapsedWidth="0"
         theme="dark"
-        style={{ backdropFilter: "blur(6px)", borderRight: "1px solid #2A2A2A" }}
+        style={{ borderRight: "1px solid #2A2A2A" }}
       >
         <div
           style={{
