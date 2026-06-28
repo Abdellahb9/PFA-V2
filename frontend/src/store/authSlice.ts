@@ -59,7 +59,12 @@ export const fetchMe = createAsyncThunk("auth/me", async (_, { rejectWithValue }
 });
 
 export const logout = createAsyncThunk("auth/logout", async () => {
-  await supabase.auth.signOut();
+  // Always succeed: clear the local session even if the network sign-out fails.
+  try {
+    await supabase.auth.signOut();
+  } catch {
+    /* ignore — state is cleared regardless below */
+  }
 });
 
 const authSlice = createSlice({
@@ -90,6 +95,10 @@ const authSlice = createSlice({
         state.isAuthenticated = false;
       })
       .addCase(logout.fulfilled, (state) => {
+        state.user = null;
+        state.isAuthenticated = false;
+      })
+      .addCase(logout.rejected, (state) => {
         state.user = null;
         state.isAuthenticated = false;
       });
