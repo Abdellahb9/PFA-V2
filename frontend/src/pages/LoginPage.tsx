@@ -5,6 +5,7 @@ import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button, Card, Form, Input, Typography, Alert } from "antd";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/store";
@@ -53,6 +54,14 @@ export default function LoginPage() {
       }}
     >
       <Card className="login-card">
+        <Button
+          type="link"
+          icon={<ArrowLeftOutlined />}
+          onClick={() => navigate("/")}
+          style={{ padding: 0, marginBottom: 8 }}
+        >
+          Retour à l'accueil
+        </Button>
         <div style={{ textAlign: "center", marginBottom: 16 }}>
           <Typography.Title level={3} style={{ marginBottom: 0 }}>
             Assistant IA
