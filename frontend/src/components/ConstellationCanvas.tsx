@@ -105,15 +105,35 @@ export default function ConstellationCanvas({ style }: { style?: CSSProperties }
         ctx.fill();
       }
 
-      if (move) raf = requestAnimationFrame(() => render(true));
+    };
+
+    // Throttle to ~30fps and pause when the tab is hidden — keeps the drift
+    // light so it never saturates the main thread.
+    let last = 0;
+    const FRAME_MS = 1000 / 30;
+    const tick = (t: number) => {
+      raf = requestAnimationFrame(tick);
+      if (t - last < FRAME_MS) return;
+      last = t;
+      render(true);
+    };
+    const onVisibility = () => {
+      cancelAnimationFrame(raf);
+      if (!reduce && !document.hidden) {
+        last = 0;
+        raf = requestAnimationFrame(tick);
+      }
     };
 
     resize();
-    if (!reduce) render(true);
+    if (reduce) render(false);
+    else raf = requestAnimationFrame(tick);
     window.addEventListener("resize", resize);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 

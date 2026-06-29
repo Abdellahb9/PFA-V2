@@ -13,7 +13,7 @@ import LandingPage from "@/pages/LandingPage";
 import CandidatePortalPage from "@/pages/CandidatePortalPage";
 import { supabase } from "@/lib/supabase";
 import { useAppDispatch } from "@/store";
-import { fetchMe, logout } from "@/store/authSlice";
+import { fetchMe, sessionCleared } from "@/store/authSlice";
 
 const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
 const CandidatesPage = lazy(() => import("@/pages/CandidatesPage"));
@@ -42,7 +42,9 @@ export default function App() {
     }
     // Keep Redux in sync if the session ends elsewhere.
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") dispatch(logout());
+      // Only clear local state here — do NOT call signOut again (that would
+      // re-fire SIGNED_OUT and loop, freezing the page).
+      if (event === "SIGNED_OUT") dispatch(sessionCleared());
     });
     return () => sub.subscription.unsubscribe();
   }, [dispatch]);
