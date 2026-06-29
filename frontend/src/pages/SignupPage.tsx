@@ -5,6 +5,7 @@ import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Alert, Button, Card, Form, Input, Result, Typography, message } from "antd";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAppDispatch, useAppSelector } from "@/store";
@@ -85,6 +86,14 @@ export default function SignupPage() {
           />
         ) : (
           <>
+            <Button
+              type="link"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate("/")}
+              style={{ padding: 0, marginBottom: 8 }}
+            >
+              Retour à l'accueil
+            </Button>
             <div style={{ textAlign: "center", marginBottom: 16 }}>
               <Typography.Title level={3} style={{ marginBottom: 0 }}>
                 Créer un compte
