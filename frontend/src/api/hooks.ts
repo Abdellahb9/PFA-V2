@@ -5,6 +5,7 @@ import { submitApplicationViaStorage } from "./upload";
 import type {
   AdminUser,
   Application,
+  CapacityForecast,
   Candidate,
   CandidateDetail,
   DashboardData,
@@ -52,6 +53,12 @@ export const useDashboard = () =>
     queryKey: ["dashboard"],
     queryFn: async () => (await api.get<DashboardData>("/dashboard")).data,
     refetchInterval: 30_000,
+  });
+
+export const useCapacityForecast = () =>
+  useQuery({
+    queryKey: ["capacity-forecast"],
+    queryFn: async () => (await api.get<CapacityForecast>("/capacity-forecast")).data,
   });
 
 // ---- Departments ----

@@ -222,6 +222,24 @@ export interface KpiSummary {
   average_match_score: number;
 }
 
+export interface DepartmentForecast {
+  department_id: number;
+  department: string;
+  capacity: number;
+  current_slots: number;
+  total_applications_12m: number;
+  monthly: number[];
+  forecast_demand: number;
+  recommended_slots: number;
+  cold_start: boolean;
+}
+
+export interface CapacityForecast {
+  target_pressure: number;
+  cold_start_global: boolean;
+  departments: DepartmentForecast[];
+}
+
 export interface DashboardData {
   kpis: KpiSummary;
   applications_by_status: LabelValue[];

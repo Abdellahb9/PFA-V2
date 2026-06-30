@@ -23,6 +23,7 @@ import {
 } from "recharts";
 import KpiCard from "@/components/KpiCard";
 import FadeIn from "@/components/FadeIn";
+import CapacityForecastPanel from "@/components/CapacityForecastPanel";
 import { useDashboard } from "@/api/hooks";
 import type { DepartmentStat } from "@/api/types";
 
@@ -169,6 +170,9 @@ export default function DashboardPage() {
           size="small"
         />
       </Card>
+
+      {/* --- Predictive capacity planning (advisory) --- */}
+      <CapacityForecastPanel />
     </FadeIn>
   );
 }
