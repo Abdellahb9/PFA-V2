@@ -30,6 +30,10 @@ faiss-cpu==1.9.0
 scikit-learn==1.6.0
 scipy==1.14.1
 numpy==1.26.4
+
+# ---- Predictive capacity planning ----
+xgboost==2.1.3
+pandas==2.2.3
 langchain==0.3.13
 langchain-community==0.3.13
 

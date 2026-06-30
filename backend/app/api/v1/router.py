@@ -11,6 +11,7 @@ from app.api.v1 import (
     departments,
     matching,
     offers,
+    planning,
     public,
 )
 
@@ -23,3 +24,4 @@ api_router.include_router(candidates.router)
 api_router.include_router(applications.router)
 api_router.include_router(matching.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(planning.router)

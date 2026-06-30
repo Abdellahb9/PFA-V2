@@ -45,8 +45,19 @@ export default function CapacityForecastPanel() {
     },
   ];
 
+  const modelTag =
+    data?.model === "xgboost" ? (
+      <Tag color="green">XGBoost</Tag>
+    ) : data?.model ? (
+      <Tag>heuristique</Tag>
+    ) : null;
+
   return (
-    <Card title="Planification de capacité — prévision (IA)" style={{ marginTop: 16 }} loading={isLoading}>
+    <Card
+      title={<span>Planification de capacité — prévision (IA) {modelTag}</span>}
+      style={{ marginTop: 16 }}
+      loading={isLoading}
+    >
       <Alert
         type="info"
         showIcon

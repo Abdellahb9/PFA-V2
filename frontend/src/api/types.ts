@@ -235,6 +235,7 @@ export interface DepartmentForecast {
 }
 
 export interface CapacityForecast {
+  model?: string; // "xgboost" | "fallback" (FastAPI backend) — optional
   target_pressure: number;
   cold_start_global: boolean;
   departments: DepartmentForecast[];
