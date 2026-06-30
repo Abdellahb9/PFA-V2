@@ -8,19 +8,26 @@ import {
   Collapse,
   Empty,
   Row,
+  Popover,
   Slider,
   Spin,
   Statistic,
   Switch,
   Table,
   Tag,
-  Tooltip,
   Typography,
   Progress,
   Space,
   message,
 } from "antd";
-import { ThunderboltOutlined, CheckOutlined, CloseOutlined, TrophyOutlined } from "@ant-design/icons";
+import {
+  ThunderboltOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  TrophyOutlined,
+  BarChartOutlined,
+} from "@ant-design/icons";
+import ScoreBreakdownChart from "@/components/ScoreBreakdownChart";
 import {
   useAssignCandidate,
   useDecideAssignment,
@@ -95,14 +102,17 @@ export default function MatchingPage() {
       title: "Détail du score",
       key: "breakdown",
       render: (_: unknown, r: AssignmentPreview) => (
-        <Space size={4}>
-          <Tooltip title="Adéquation des compétences">
+        <Popover
+          trigger="click"
+          title="Explication du score (XAI)"
+          content={<ScoreBreakdownChart breakdown={r.score_breakdown} score={r.match_score} />}
+        >
+          <Space size={4} style={{ cursor: "pointer" }}>
             <Tag color="blue">Comp {Math.round(r.score_breakdown.skills * 100)}%</Tag>
-          </Tooltip>
-          <Tooltip title="Niveau d'études">
             <Tag color="gold">Étud {Math.round(r.score_breakdown.education * 100)}%</Tag>
-          </Tooltip>
-        </Space>
+            <BarChartOutlined style={{ color: "#76B900" }} />
+          </Space>
+        </Popover>
       ),
     },
     {
@@ -169,10 +179,17 @@ export default function MatchingPage() {
       title: "Détail du score",
       key: "breakdown",
       render: (_: unknown, r: RankedCandidate) => (
-        <Space size={4}>
-          <Tag color="blue">Comp {Math.round(r.score_breakdown.skills * 100)}%</Tag>
-          <Tag color="gold">Étud {Math.round(r.score_breakdown.education * 100)}%</Tag>
-        </Space>
+        <Popover
+          trigger="click"
+          title="Explication du score (XAI)"
+          content={<ScoreBreakdownChart breakdown={r.score_breakdown} score={r.match_score} />}
+        >
+          <Space size={4} style={{ cursor: "pointer" }}>
+            <Tag color="blue">Comp {Math.round(r.score_breakdown.skills * 100)}%</Tag>
+            <Tag color="gold">Étud {Math.round(r.score_breakdown.education * 100)}%</Tag>
+            <BarChartOutlined style={{ color: "#76B900" }} />
+          </Space>
+        </Popover>
       ),
     },
     {
