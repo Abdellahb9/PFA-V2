@@ -3,7 +3,7 @@
 // Invoked fire-and-forget by submit-application (and by /api/reanalyze).
 import { admin, BUCKET } from "./_shared/supabase";
 import { extractCvText, regexHints } from "./_shared/cv";
-import { extractProfile } from "./_shared/groq";
+import { extractProfileCached } from "./_shared/cv-cache";
 import { extractSkills } from "./_shared/skills";
 import { getOrCreateSkill, loadOfferProfiles } from "./_shared/db";
 import { compositeScore, type CandidateProfile } from "./_shared/scoring";
@@ -69,7 +69,7 @@ export default async (req: Request): Promise<Response> => {
       return ok();
     }
 
-    const llm = await extractProfile(fullText);
+    const llm = await extractProfileCached(fullText);
     const hints = regexHints(fullText);
     const skillsRaw = llm?.skills?.length ? llm.skills : extractSkills(fullText);
 

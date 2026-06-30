@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "description": "Serverless backend (Netlify Functions) — Supabase + Groq.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",
     "groq-sdk": "^0.9.0",
@@ -15,6 +19,8 @@
     "@netlify/functions": "^2.8.2",
     "@types/node": "^22.10.2",
     "@types/ws": "^8.5.13",
-    "typescript": "^5.7.2"
+    "debug": "^4.4.3",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }
