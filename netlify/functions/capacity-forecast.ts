@@ -1,11 +1,16 @@
-// GET /api/capacity-forecast — per-department internship-demand forecast and a
-// suggested slot allocation for the coming period. Lightweight, serverless TS
-// (no Python/XGBoost): a weighted moving average + light trend over the last
-// 12 months of applications. The model PROPOSES; capacity/slots stay manual.
-// Degrades gracefully (cold_start) when history is too thin.
+// GET /api/capacity-forecast — per-department internship-demand forecast + a
+// suggested slot allocation. Inference runs a REAL XGBoost model (trained
+// offline by scripts/train_forecast.py, exported to JSON) in pure TS — so
+// XGBoost itself never ships in the serverless function. Falls back to a
+// weighted moving average if the model can't be evaluated. The model PROPOSES;
+// capacity/slots stay manual. Degrades gracefully (cold_start) on thin history.
 import { requireStaff } from "./_shared/auth";
 import { admin } from "./_shared/supabase";
 import { json, fail } from "./_shared/http";
+import { predictXGB, type XGBModel } from "./_shared/xgb-predict";
+import forecastModelJson from "./_shared/forecast_model.json";
+
+const MODEL = forecastModelJson as unknown as XGBModel;
 
 export const config = { path: "/api/capacity-forecast" };
 
@@ -74,6 +79,24 @@ export default async (req: Request): Promise<Response> => {
     m.set(key, (m.get(key) ?? 0) + 1);
   }
 
+  // Next calendar month (1..12) for the seasonality feature.
+  const nextMonth = (Number(months[months.length - 1].split("-")[1]) % 12) + 1;
+  let usedFallback = false;
+
+  // XGBoost inference for one department; falls back to the moving average.
+  const predictDept = (monthly: number[], capacity: number): number => {
+    const n = monthly.length;
+    const [l1, l2, l3] = [monthly[n - 1], monthly[n - 2], monthly[n - 3]];
+    try {
+      // Feature order must match scripts/train_forecast.py.
+      const x = [l1, l2, l3, (l1 + l2 + l3) / 3, nextMonth, capacity];
+      return Math.max(0, Math.round(predictXGB(MODEL, x)));
+    } catch {
+      usedFallback = true;
+      return forecastDemand(monthly);
+    }
+  };
+
   const rows = (departments ?? []).map((d) => {
     const monthMap = series.get(d.id) ?? new Map<string, number>();
     const monthly = months.map((k) => monthMap.get(k) ?? 0);
@@ -81,7 +104,7 @@ export default async (req: Request): Promise<Response> => {
     const currentSlots = slotsByDept.get(d.id) ?? 0;
     const coldStart = total < COLD_START_MIN;
 
-    const forecast = coldStart ? 0 : forecastDemand(monthly);
+    const forecast = coldStart ? 0 : predictDept(monthly, d.capacity ?? 0);
     const recommended = coldStart
       ? currentSlots // not enough history → suggest no change
       : Math.min(d.capacity ?? 999, Math.max(1, Math.round(forecast / TARGET_PRESSURE)));
@@ -100,6 +123,7 @@ export default async (req: Request): Promise<Response> => {
   });
 
   return json({
+    model: usedFallback ? "heuristic" : "xgboost",
     target_pressure: TARGET_PRESSURE,
     cold_start_global: rows.every((r) => r.cold_start),
     departments: rows.sort((a, b) => b.forecast_demand - a.forecast_demand),
