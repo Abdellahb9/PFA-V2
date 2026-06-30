@@ -5,6 +5,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import AppLayout from "@/components/Layout";
 import BackgroundLayer from "@/components/BackgroundLayer";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { SHOW_CONSTELLATION } from "@/config";
 import AppLoader from "@/components/AppLoader";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import LoginPage from "@/pages/LoginPage";
@@ -53,7 +54,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <BackgroundLayer />
+      {SHOW_CONSTELLATION && <BackgroundLayer />}
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />

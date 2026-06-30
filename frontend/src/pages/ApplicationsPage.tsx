@@ -129,7 +129,7 @@ export default function ApplicationsPage() {
       title="Candidatures"
       extra={
         <Space>
-          {isFetching && <ReloadOutlined spin style={{ color: "#76B900" }} />}
+          {isFetching && <ReloadOutlined spin style={{ color: "#00843d" }} />}
           <Select
             allowClear
             placeholder="Filtrer par statut"

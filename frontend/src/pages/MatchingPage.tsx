@@ -110,7 +110,7 @@ export default function MatchingPage() {
           <Space size={4} style={{ cursor: "pointer" }}>
             <Tag color="blue">Comp {Math.round(r.score_breakdown.skills * 100)}%</Tag>
             <Tag color="gold">Étud {Math.round(r.score_breakdown.education * 100)}%</Tag>
-            <BarChartOutlined style={{ color: "#76B900" }} />
+            <BarChartOutlined style={{ color: "#00843d" }} />
           </Space>
         </Popover>
       ),
@@ -187,7 +187,7 @@ export default function MatchingPage() {
           <Space size={4} style={{ cursor: "pointer" }}>
             <Tag color="blue">Comp {Math.round(r.score_breakdown.skills * 100)}%</Tag>
             <Tag color="gold">Étud {Math.round(r.score_breakdown.education * 100)}%</Tag>
-            <BarChartOutlined style={{ color: "#76B900" }} />
+            <BarChartOutlined style={{ color: "#00843d" }} />
           </Space>
         </Popover>
       ),

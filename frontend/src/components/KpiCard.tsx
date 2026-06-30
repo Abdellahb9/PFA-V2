@@ -20,7 +20,7 @@ export default function KpiCard({ title, value, suffix, precision, icon, color }
         precision={precision}
         suffix={suffix}
         prefix={icon}
-        valueStyle={{ color: color ?? "#76B900", fontWeight: 700 }}
+        valueStyle={{ color: color ?? "#00843d", fontWeight: 700 }}
       />
     </Card>
   );

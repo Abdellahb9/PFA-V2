@@ -68,7 +68,7 @@ export default function SignupPage() {
         alignItems: "center",
         justifyContent: "center",
         background:
-          "radial-gradient(circle at 50% -10%, rgba(118,185,0,0.18) 0%, transparent 55%)",
+          "radial-gradient(circle at 50% -10%, rgba(0,132,61,0.06) 0%, #f4f6f8 55%)",
         padding: 24,
       }}
     >

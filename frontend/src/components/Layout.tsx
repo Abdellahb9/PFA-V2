@@ -43,12 +43,12 @@ export default function AppLayout() {
       <Sider
         breakpoint="lg"
         collapsedWidth="0"
-        theme="dark"
-        style={{ borderRight: "1px solid #2A2A2A" }}
+        theme="light"
+        style={{ borderRight: "1px solid #eceff3" }}
       >
         <div
           style={{
-            color: "#fff",
+            color: "#00843d",
             padding: "18px 16px",
             fontWeight: 700,
             fontSize: 16,
@@ -56,10 +56,12 @@ export default function AppLayout() {
           }}
         >
           PHOSBOUCRAA
-          <div style={{ fontSize: 11, opacity: 0.7 }}>Assistant IA Stages</div>
+          <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 400 }}>
+            Assistant IA Stages
+          </div>
         </div>
         <Menu
-          theme="dark"
+          theme="light"
           mode="inline"
           selectedKeys={[location.pathname]}
           items={navItems}
@@ -69,8 +71,8 @@ export default function AppLayout() {
       <Layout>
         <Header
           style={{
-            background: "transparent",
-            borderBottom: "1px solid #2A2A2A",
+            background: "#ffffff",
+            borderBottom: "1px solid #eceff3",
             display: "flex",
             justifyContent: "flex-end",
             alignItems: "center",
@@ -94,7 +96,7 @@ export default function AppLayout() {
             }}
           >
             <div style={{ cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
-              <Avatar icon={<UserOutlined />} style={{ background: "#76B900", color: "#0A0A0A" }} />
+              <Avatar icon={<UserOutlined />} style={{ background: "#00843d" }} />
               <Typography.Text>{user?.full_name ?? "Utilisateur"}</Typography.Text>
             </div>
           </Dropdown>

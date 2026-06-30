@@ -35,7 +35,7 @@ const { Header, Content, Footer } = Layout;
 const { Title, Paragraph, Text } = Typography;
 
 // Phosboucraa Foundation brand green (overrides the admin theme locally).
-const FOUNDATION_GREEN = "#76B900"; // NVIDIA brand green (dark theme accent)
+const FOUNDATION_GREEN = "#00843d"; // OCP / Phosboucraa brand green
 
 function OfferCard({
   offer,
@@ -107,7 +107,7 @@ function LandingContent() {
       {/* --- Navbar --- */}
       <Header
         style={{
-          background: "transparent",
+          background: "#ffffff",
           borderBottom: `1px solid ${token.colorBorderSecondary}`,
           display: "flex",
           alignItems: "center",
@@ -131,25 +131,19 @@ function LandingContent() {
         {/* --- Hero --- */}
         <section
           style={{
-            background:
-              "radial-gradient(circle at 50% 0%, rgba(118,185,0,0.16) 0%, transparent 60%)",
-            borderBottom: "1px solid #2A2A2A",
-            color: "#fff",
+            background: "linear-gradient(180deg, #f0f7f2 0%, #f4f6f8 100%)",
+            borderBottom: "1px solid #eceff3",
             padding: "88px 24px",
           }}
         >
           <FadeIn>
             <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center" }}>
-              <Title style={{ color: "#fff", fontSize: 44, marginBottom: 12 }}>
+              <Title style={{ fontSize: 44, marginBottom: 12 }}>
                 Rejoignez nos programmes de stage
               </Title>
               <Paragraph
-                style={{
-                  color: "rgba(255,255,255,0.88)",
-                  fontSize: 18,
-                  maxWidth: 680,
-                  margin: "0 auto 28px",
-                }}
+                type="secondary"
+                style={{ fontSize: 18, maxWidth: 680, margin: "0 auto 28px" }}
               >
                 La Fondation Phosboucraa accompagne les étudiants vers l'excellence à travers
                 des stages encadrés au sein de ses départements. (Texte placeholder.)
@@ -160,11 +154,10 @@ function LandingContent() {
                   icon={<ArrowRightOutlined />}
                   onClick={scrollToOffers}
                   type="primary"
-                  style={{ color: "#0A0A0A", fontWeight: 600 }}
                 >
                   Voir les offres de stage
                 </Button>
-                <Button size="large" ghost onClick={() => navigate("/login")}>
+                <Button size="large" onClick={() => navigate("/login")}>
                   Espace admin
                 </Button>
               </Space>
@@ -247,24 +240,22 @@ function LandingContent() {
       </Content>
 
       {/* --- Footer --- */}
-      <Footer style={{ background: "#111", color: "rgba(255,255,255,0.75)", textAlign: "center" }}>
+      <Footer
+        style={{
+          background: "#ffffff",
+          borderTop: "1px solid #eceff3",
+          textAlign: "center",
+        }}
+      >
         <Space direction="vertical" size="small">
           <Space split={<span style={{ opacity: 0.4 }}>·</span>} wrap>
-            <a style={{ color: "#fff" }} href="#offres">
-              Offres
-            </a>
-            <Button
-              type="link"
-              style={{ color: "#fff", padding: 0 }}
-              onClick={() => navigate("/login")}
-            >
+            <a href="#offres">Offres</a>
+            <Button type="link" style={{ padding: 0 }} onClick={() => navigate("/login")}>
               Espace admin
             </Button>
-            <a style={{ color: "#fff" }} href="mailto:contact@phosboucraa.ma">
-              Contact
-            </a>
+            <a href="mailto:contact@phosboucraa.ma">Contact</a>
           </Space>
-          <Text style={{ color: "rgba(255,255,255,0.5)" }}>
+          <Text type="secondary">
             © {new Date().getFullYear()} Phosboucraa Foundation — Tous droits réservés.
           </Text>
         </Space>
@@ -335,12 +326,10 @@ export default function LandingPage() {
   return (
     <ConfigProvider
       theme={{
-        algorithm: theme.darkAlgorithm,
         token: {
           colorPrimary: FOUNDATION_GREEN,
           colorLink: FOUNDATION_GREEN,
-          colorBgContainer: "#161616",
-          colorBorderSecondary: "#2A2A2A",
+          colorBorderSecondary: "#eceff3",
         },
       }}
     >

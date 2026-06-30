@@ -26,7 +26,7 @@ import FadeIn from "@/components/FadeIn";
 import { useDashboard } from "@/api/hooks";
 import type { DepartmentStat } from "@/api/types";
 
-const COLORS = ["#76B900", "#52c41a", "#4A9EFF", "#faad14", "#eb2f96", "#A855F7", "#13c2c2", "#fa541c"];
+const COLORS = ["#00843d", "#52c41a", "#4A9EFF", "#faad14", "#eb2f96", "#A855F7", "#13c2c2", "#fa541c"];
 
 export default function DashboardPage() {
   const { data, isLoading } = useDashboard();
@@ -122,7 +122,7 @@ export default function DashboardPage() {
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} angle={-15} height={50} />
                 <YAxis allowDecimals={false} />
                 <Tooltip />
-                <Bar dataKey="value" fill="#76B900" name="Candidats" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="value" fill="#00843d" name="Candidats" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </Card>
