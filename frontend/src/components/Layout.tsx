@@ -1,5 +1,5 @@
 // Main authenticated layout: sidebar navigation + header + content outlet.
-import { Layout, Menu, Avatar, Dropdown, Typography } from "antd";
+import { Layout, Menu, Avatar, Dropdown, Typography, theme } from "antd";
 import {
   DashboardOutlined,
   FileTextOutlined,
@@ -16,6 +16,8 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { logout, sessionCleared } from "@/store/authSlice";
 import RouteFallback from "@/components/RouteFallback";
+import ThemeToggle from "@/components/ThemeToggle";
+import { useThemeMode } from "@/theme/ThemeProvider";
 
 const { Header, Sider, Content } = Layout;
 
@@ -37,14 +39,16 @@ export default function AppLayout() {
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.auth.user);
   const navItems = user?.role === "admin" ? [...NAV, ADMIN_NAV] : NAV;
+  const { mode } = useThemeMode();
+  const { token } = theme.useToken();
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
       <Sider
         breakpoint="lg"
         collapsedWidth="0"
-        theme="light"
-        style={{ borderRight: "1px solid #eceff3" }}
+        theme={mode}
+        style={{ borderRight: `1px solid ${token.colorBorderSecondary}` }}
       >
         <div
           style={{
@@ -61,7 +65,7 @@ export default function AppLayout() {
           </div>
         </div>
         <Menu
-          theme="light"
+          theme={mode}
           mode="inline"
           selectedKeys={[location.pathname]}
           items={navItems}
@@ -71,14 +75,16 @@ export default function AppLayout() {
       <Layout>
         <Header
           style={{
-            background: "#ffffff",
-            borderBottom: "1px solid #eceff3",
+            background: "transparent",
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
             display: "flex",
             justifyContent: "flex-end",
             alignItems: "center",
+            gap: 8,
             paddingInline: 24,
           }}
         >
+          <ThemeToggle />
           <Dropdown
             menu={{
               items: [

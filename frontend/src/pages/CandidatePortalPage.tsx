@@ -1,7 +1,8 @@
 // Candidate portal: the applicant tracks their own applications via a status
 // timeline. Read-only; no internal data (scores, other candidates) is exposed.
-import { Button, Card, Empty, Layout, Spin, Steps, Tag, Typography } from "antd";
+import { Button, Card, Empty, Layout, Space, Spin, Steps, Tag, Typography, theme } from "antd";
 import { LogoutOutlined, FileDoneOutlined } from "@ant-design/icons";
+import ThemeToggle from "@/components/ThemeToggle";
 import { useNavigate } from "react-router-dom";
 import { useMyApplications } from "@/api/hooks";
 import FadeIn from "@/components/FadeIn";
@@ -77,6 +78,7 @@ export default function CandidatePortalPage() {
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.auth.user);
   const { data, isLoading } = useMyApplications();
+  const { token } = theme.useToken();
 
   const onLogout = () => {
     dispatch(sessionCleared()); // instant UI logout
@@ -93,16 +95,19 @@ export default function CandidatePortalPage() {
           alignItems: "center",
           justifyContent: "space-between",
           paddingInline: 24,
-          borderBottom: "1px solid #eceff3",
+          borderBottom: `1px solid ${token.colorBorderSecondary}`,
         }}
       >
         <span style={{ fontWeight: 700 }}>
           <FileDoneOutlined style={{ color: "#76B900", marginRight: 8 }} />
           Mon espace candidat
         </span>
-        <Button icon={<LogoutOutlined />} onClick={onLogout}>
-          Se déconnecter
-        </Button>
+        <Space>
+          <ThemeToggle />
+          <Button icon={<LogoutOutlined />} onClick={onLogout}>
+            Se déconnecter
+          </Button>
+        </Space>
       </Header>
 
       <Content style={{ maxWidth: 1100, width: "100%", margin: "0 auto", padding: 24 }}>

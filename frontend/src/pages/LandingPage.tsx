@@ -7,7 +7,6 @@ import {
   Button,
   Card,
   Col,
-  ConfigProvider,
   Empty,
   Layout,
   Modal,
@@ -30,12 +29,10 @@ import FadeIn from "@/components/FadeIn";
 import PublicApplicationModal from "@/components/PublicApplicationModal";
 import type { PublicOffer } from "@/api/types";
 import logo from "@/assets/phosboucraa-logo.png";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const { Header, Content, Footer } = Layout;
 const { Title, Paragraph, Text } = Typography;
-
-// Phosboucraa Foundation brand green (overrides the admin theme locally).
-const FOUNDATION_GREEN = "#76B900"; // OCP / Phosboucraa brand green
 
 function OfferCard({
   offer,
@@ -120,6 +117,7 @@ function LandingContent() {
       >
         <img src={logo} alt="Phosboucraa Foundation" style={{ height: 40 }} />
         <Space>
+          <ThemeToggle />
           <Button onClick={() => navigate("/inscription")}>Créer un compte</Button>
           <Button type="primary" icon={<LoginOutlined />} onClick={() => navigate("/login")}>
             Se connecter
@@ -133,7 +131,7 @@ function LandingContent() {
           style={{
             background:
               "radial-gradient(circle at 50% 0%, rgba(118,185,0,0.12) 0%, transparent 60%)",
-            borderBottom: "1px solid #eceff3",
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
             padding: "88px 24px",
           }}
         >
@@ -244,7 +242,7 @@ function LandingContent() {
       <Footer
         style={{
           background: "transparent",
-          borderTop: "1px solid #eceff3",
+          borderTop: `1px solid ${token.colorBorderSecondary}`,
           textAlign: "center",
         }}
       >
@@ -323,18 +321,6 @@ function LandingContent() {
 }
 
 export default function LandingPage() {
-  // Scope the Foundation green so AntD components + tokens use it here only.
-  return (
-    <ConfigProvider
-      theme={{
-        token: {
-          colorPrimary: FOUNDATION_GREEN,
-          colorLink: FOUNDATION_GREEN,
-          colorBorderSecondary: "#eceff3",
-        },
-      }}
-    >
-      <LandingContent />
-    </ConfigProvider>
-  );
+  // Inherit the global NVIDIA theme (dark/light) so the toggle applies here too.
+  return <LandingContent />;
 }

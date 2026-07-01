@@ -1,9 +1,14 @@
-// Fixed, non-interactive page background (NVIDIA "Build" look): near-black base
-// + drifting constellation mesh + a soft green glow anchored at the bottom.
-// Sits behind all content; page containers must be transparent to reveal it.
+// Fixed, non-interactive NVIDIA "Build" background: base fill + drifting
+// constellation mesh + soft green glow. Adapts to the current theme mode
+// (dark near-black canvas vs light canvas). Behind everything, non-interactive.
 import ConstellationCanvas from "./ConstellationCanvas";
+import { useThemeMode } from "@/theme/ThemeProvider";
+import { modeVisuals } from "@/theme/themes";
 
 export default function BackgroundLayer() {
+  const { mode } = useThemeMode();
+  const v = modeVisuals[mode];
+
   return (
     <div
       aria-hidden="true"
@@ -12,20 +17,23 @@ export default function BackgroundLayer() {
         inset: 0,
         zIndex: -10,
         pointerEvents: "none",
-        background: "#f4f6f8",
+        background: v.base,
       }}
     >
       <ConstellationCanvas
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0.7 }}
-      />
-      <div
+        key={mode} // remount so the new alphas apply on toggle
+        nodeAlpha={v.nodeAlpha}
+        lineAlpha={v.lineAlpha}
+        triAlpha={v.triAlpha}
         style={{
           position: "absolute",
           inset: 0,
-          background:
-            "radial-gradient(120% 65% at 50% 100%, rgba(118,185,0,0.13) 0%, rgba(118,185,0,0.05) 38%, transparent 72%)",
+          width: "100%",
+          height: "100%",
+          opacity: v.canvasOpacity,
         }}
       />
+      <div style={{ position: "absolute", inset: 0, background: v.glow }} />
     </div>
   );
 }
