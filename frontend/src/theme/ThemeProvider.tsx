@@ -20,9 +20,11 @@ export default function ThemeProvider({ children }: { children: ReactNode }) {
     () => (localStorage.getItem(STORAGE_KEY) as ThemeMode) || "light",
   );
 
-  // Keep the page background in sync (also covers the pre-mount flash).
+  // Keep the page base colour in sync. It lives on <html> (painted behind the
+  // fixed BackgroundLayer) so the constellation stays visible; setting it on
+  // body/#root would paint over the layer and hide it.
   useEffect(() => {
-    document.body.style.background = modeVisuals[mode].base;
+    document.documentElement.style.background = modeVisuals[mode].base;
   }, [mode]);
 
   const value = useMemo<ThemeCtx>(
