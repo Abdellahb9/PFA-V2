@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     )
     EMBEDDING_DIM: int = 384
 
+    # --- Embedding cache (Redis DB2) ---
+    # Cache CV-text embeddings keyed by SHA-256 to skip the model call on repeats.
+    REDIS_CACHE_URL: str = "redis://redis:6379/2"
+    EMBEDDING_CACHE_ENABLED: bool = True
+    EMBEDDING_CACHE_TTL_SECONDS: int = 60 * 60 * 24 * 30  # 30 days
+
     # --- Bootstrap admin ---
     FIRST_ADMIN_EMAIL: str = "admin@phosboucraa.ma"
     FIRST_ADMIN_PASSWORD: str = "Admin@1234"

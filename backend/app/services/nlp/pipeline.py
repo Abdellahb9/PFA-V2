@@ -13,7 +13,7 @@ from functools import lru_cache
 
 from app.core.config import settings
 from app.services.nlp import llm
-from app.services.nlp.embeddings import embed_text
+from app.services.nlp.embeddings import embed_text_cached
 from app.services.nlp.skills_db import extract_skills
 
 logger = logging.getLogger(__name__)
@@ -186,8 +186,8 @@ def parse_cv(text: str) -> ParsedProfile:
         profile.last_name = profile.last_name or last
         profile.university = profile.university or university
 
-    # 3) Semantic embedding of the full CV for the matching engine.
-    profile.embedding = embed_text(text)
+    # 3) Semantic embedding of the full CV for the matching engine (cached).
+    profile.embedding = embed_text_cached(text)
     return profile
 
 
