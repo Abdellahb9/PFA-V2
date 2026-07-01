@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import type { ScoreBreakdown } from "@/api/types";
 
-const GREEN = "#00843d";
+const GREEN = "#76B900";
 
 export default function ScoreBreakdownChart({
   breakdown,

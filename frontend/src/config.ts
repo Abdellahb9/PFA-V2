@@ -1,5 +1,4 @@
 // Feature flags.
-// The animated constellation background belongs to the dark "NVIDIA" look; the
-// light enterprise theme turns it off by default. It is kept (not deleted) and
-// can be re-enabled with VITE_SHOW_CONSTELLATION=true.
-export const SHOW_CONSTELLATION = import.meta.env.VITE_SHOW_CONSTELLATION === "true";
+// The NVIDIA-style constellation background is ON by default (light-mode NVIDIA
+// look). Disable it with VITE_SHOW_CONSTELLATION=false.
+export const SHOW_CONSTELLATION = import.meta.env.VITE_SHOW_CONSTELLATION !== "false";

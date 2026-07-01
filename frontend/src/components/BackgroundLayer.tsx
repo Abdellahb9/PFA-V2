@@ -12,18 +12,18 @@ export default function BackgroundLayer() {
         inset: 0,
         zIndex: -10,
         pointerEvents: "none",
-        background: "#0A0A0A",
+        background: "#f4f6f8",
       }}
     >
       <ConstellationCanvas
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0.9 }}
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0.7 }}
       />
       <div
         style={{
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(120% 65% at 50% 100%, rgba(118,185,0,0.22) 0%, rgba(118,185,0,0.09) 38%, transparent 72%)",
+            "radial-gradient(120% 65% at 50% 100%, rgba(118,185,0,0.13) 0%, rgba(118,185,0,0.05) 38%, transparent 72%)",
         }}
       />
     </div>

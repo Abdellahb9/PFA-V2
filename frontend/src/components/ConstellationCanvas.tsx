@@ -60,7 +60,7 @@ export default function ConstellationCanvas({ style }: { style?: CSSProperties }
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Accent triangles (static, low alpha).
-      ctx.fillStyle = `rgba(${GREEN},0.3)`;
+      ctx.fillStyle = `rgba(${GREEN},0.2)`;
       for (const t of tris) {
         ctx.save();
         ctx.translate(t.x, t.y);
@@ -82,7 +82,7 @@ export default function ConstellationCanvas({ style }: { style?: CSSProperties }
           const dy = nodes[i].y - nodes[j].y;
           const d = Math.hypot(dx, dy);
           if (d < LINK_DIST) {
-            ctx.strokeStyle = `rgba(${GREEN},${0.2 * (1 - d / LINK_DIST)})`;
+            ctx.strokeStyle = `rgba(${GREEN},${0.16 * (1 - d / LINK_DIST)})`;
             ctx.beginPath();
             ctx.moveTo(nodes[i].x, nodes[i].y);
             ctx.lineTo(nodes[j].x, nodes[j].y);
@@ -92,7 +92,7 @@ export default function ConstellationCanvas({ style }: { style?: CSSProperties }
       }
 
       // Nodes.
-      ctx.fillStyle = `rgba(${GREEN},0.75)`;
+      ctx.fillStyle = `rgba(${GREEN},0.6)`;
       for (const n of nodes) {
         if (move) {
           n.x += n.vx;

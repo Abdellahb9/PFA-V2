@@ -17,23 +17,26 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 });
 
-// Light, professional "enterprise" theme — clean, flat, recruiter-scannable.
-// Centralised here via AntD tokens (default = light algorithm). OCP brand green.
+// NVIDIA "Build" look in LIGHT mode — light surfaces, NVIDIA green accent, the
+// constellation shows through transparent layout chrome. Centralised via tokens.
 const enterpriseTheme = {
   token: {
-    colorPrimary: "#00843d",
-    colorInfo: "#00843d",
-    colorLink: "#00843d",
-    colorLinkHover: "#00a04a",
+    colorPrimary: "#76B900",
+    colorInfo: "#76B900",
+    colorLink: "#76B900",
+    colorLinkHover: "#8FD400",
     colorBgLayout: "#f4f6f8",
     colorBorderSecondary: "#eceff3",
     borderRadius: 8,
     fontFamily: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
   },
   components: {
-    Layout: { headerBg: "#ffffff", bodyBg: "#f4f6f8", siderBg: "#ffffff" },
-    Menu: { itemSelectedBg: "rgba(0,132,61,0.10)", itemSelectedColor: "#00843d" },
-    Button: { primaryColor: "#ffffff", fontWeight: 600 },
+    // Transparent header/body so the fixed constellation shows through; sider is
+    // an opaque light panel.
+    Layout: { headerBg: "transparent", bodyBg: "transparent", siderBg: "#ffffff" },
+    Menu: { itemSelectedBg: "rgba(118,185,0,0.12)", itemSelectedColor: "#5a8f00" },
+    // NVIDIA green is bright — dark text reads better on primary buttons.
+    Button: { primaryColor: "#0A0A0A", fontWeight: 600 },
     Card: { colorBorderSecondary: "#eceff3" },
   },
 };

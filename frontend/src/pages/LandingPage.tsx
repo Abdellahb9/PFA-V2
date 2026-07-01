@@ -35,7 +35,7 @@ const { Header, Content, Footer } = Layout;
 const { Title, Paragraph, Text } = Typography;
 
 // Phosboucraa Foundation brand green (overrides the admin theme locally).
-const FOUNDATION_GREEN = "#00843d"; // OCP / Phosboucraa brand green
+const FOUNDATION_GREEN = "#76B900"; // OCP / Phosboucraa brand green
 
 function OfferCard({
   offer,
@@ -107,7 +107,7 @@ function LandingContent() {
       {/* --- Navbar --- */}
       <Header
         style={{
-          background: "#ffffff",
+          background: "transparent",
           borderBottom: `1px solid ${token.colorBorderSecondary}`,
           display: "flex",
           alignItems: "center",
@@ -131,7 +131,8 @@ function LandingContent() {
         {/* --- Hero --- */}
         <section
           style={{
-            background: "linear-gradient(180deg, #f0f7f2 0%, #f4f6f8 100%)",
+            background:
+              "radial-gradient(circle at 50% 0%, rgba(118,185,0,0.12) 0%, transparent 60%)",
             borderBottom: "1px solid #eceff3",
             padding: "88px 24px",
           }}
@@ -242,7 +243,7 @@ function LandingContent() {
       {/* --- Footer --- */}
       <Footer
         style={{
-          background: "#ffffff",
+          background: "transparent",
           borderTop: "1px solid #eceff3",
           textAlign: "center",
         }}
