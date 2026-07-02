@@ -5,11 +5,13 @@ import { submitApplicationViaStorage } from "./upload";
 import type {
   AdminUser,
   Application,
+  AssistantResponse,
   CapacityForecast,
   Candidate,
   CandidateDetail,
   DashboardData,
   Department,
+  KnowledgeDocument,
   MatchingResult,
   MyApplication,
   Offer,
@@ -277,5 +279,50 @@ export const useAssignCandidate = () => {
       qc.invalidateQueries({ queryKey: ["applications"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
+  });
+};
+
+// ---- Assistant RAG ----
+export const useAssistantQuery = () =>
+  useMutation({
+    mutationFn: async (body: {
+      query: string;
+      assignment_id?: number;
+      min_years_experience?: number;
+      education_level?: string;
+      top_k?: number;
+    }) => (await api.post<AssistantResponse>("/assistant/query", body)).data,
+  });
+
+export const useKnowledgeDocuments = () =>
+  useQuery({
+    queryKey: ["knowledge-documents"],
+    queryFn: async () => (await api.get<KnowledgeDocument[]>("/assistant/documents")).data,
+  });
+
+// Upload a policy/process document; ingestion (chunk + embed) runs async in Celery.
+export const useIngestKnowledgeDocument = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ file, title }: { file: File; title?: string }) => {
+      const form = new FormData();
+      form.append("file", file);
+      if (title) form.append("title", title);
+      return (await api.post("/assistant/documents", form)).data;
+    },
+    // Chunks appear once the Celery task finishes; refresh after a short delay too.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["knowledge-documents"] });
+      setTimeout(() => qc.invalidateQueries({ queryKey: ["knowledge-documents"] }), 8000);
+    },
+  });
+};
+
+export const useDeleteKnowledgeDocument = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sourceDocument: string) =>
+      (await api.delete(`/assistant/documents/${encodeURIComponent(sourceDocument)}`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["knowledge-documents"] }),
   });
 };

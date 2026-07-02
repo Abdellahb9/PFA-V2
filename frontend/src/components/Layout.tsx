@@ -10,6 +10,7 @@ import {
   LogoutOutlined,
   UserOutlined,
   UsergroupAddOutlined,
+  RobotOutlined,
 } from "@ant-design/icons";
 import { Suspense } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -29,6 +30,7 @@ const NAV = [
   { key: "/departements", icon: <ApartmentOutlined />, label: "Départements" },
   { key: "/offres", icon: <SolutionOutlined />, label: "Offres de stage" },
   { key: "/matching", icon: <DeploymentUnitOutlined />, label: "Affectation IA" },
+  { key: "/assistant", icon: <RobotOutlined />, label: "Assistant RAG" },
 ];
 // Admin-only navigation item (user management).
 const ADMIN_NAV = { key: "/utilisateurs", icon: <UsergroupAddOutlined />, label: "Utilisateurs" };

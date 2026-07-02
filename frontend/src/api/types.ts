@@ -249,3 +249,61 @@ export interface DashboardData {
   monthly_applications: LabelValue[];
   top_skills: LabelValue[];
 }
+
+// ---- Assistant RAG ----
+export type AssistantIntent = "candidate_search" | "matching_explanation" | "policy_qa";
+
+export interface AssistantCandidateSource {
+  type: "candidate";
+  candidate_id: number;
+  name: string;
+  education_level: string | null;
+  field_of_study: string | null;
+  years_experience: number;
+  skills: string[];
+  similarity: number;
+}
+
+export interface AssistantChunkSource {
+  type: "doc_chunk";
+  source_document: string;
+  chunk_index: number;
+  text: string;
+  similarity: number;
+}
+
+export interface AssistantExplanationSource {
+  type: "matching_explanation";
+  assignment_id: number;
+  match_score: number;
+  score_breakdown: Record<string, unknown> | null;
+  status: string;
+  candidate: {
+    name: string;
+    education_level: string | null;
+    field_of_study: string | null;
+    years_experience: number;
+    skills: string[];
+  };
+  offer: {
+    title: string;
+    min_education_level: string | null;
+    required_skills: string[];
+  };
+}
+
+export type AssistantSource =
+  | AssistantCandidateSource
+  | AssistantChunkSource
+  | AssistantExplanationSource;
+
+export interface AssistantResponse {
+  intent: AssistantIntent;
+  answer: string;
+  sources: AssistantSource[];
+}
+
+export interface KnowledgeDocument {
+  source_document: string;
+  chunks: number;
+}

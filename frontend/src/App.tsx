@@ -23,6 +23,7 @@ const OffersPage = lazy(() => import("@/pages/OffersPage"));
 const ApplicationsPage = lazy(() => import("@/pages/ApplicationsPage"));
 const MatchingPage = lazy(() => import("@/pages/MatchingPage"));
 const UsersPage = lazy(() => import("@/pages/UsersPage"));
+const AssistantPage = lazy(() => import("@/pages/AssistantPage"));
 
 // Detect a persisted Supabase session synchronously to avoid a splash flash
 // for logged-out visitors (the token lives under an `sb-*-auth-token` key).
@@ -82,6 +83,7 @@ export default function App() {
           <Route path="/departements" element={<DepartmentsPage />} />
           <Route path="/offres" element={<OffersPage />} />
           <Route path="/matching" element={<MatchingPage />} />
+          <Route path="/assistant" element={<AssistantPage />} />
           <Route path="/utilisateurs" element={<UsersPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
