@@ -49,7 +49,7 @@ export default function ConstellationCanvas({
       canvas.width = canvas.offsetWidth;
       canvas.height = canvas.offsetHeight;
       // Scale node count by viewport area, capped for performance.
-      const count = Math.min(240, Math.round((canvas.width * canvas.height) / 18000));
+      const count = Math.min(320, Math.round((canvas.width * canvas.height) / 12000));
       nodes = Array.from({ length: count }, () => ({
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,

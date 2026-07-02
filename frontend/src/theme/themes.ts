@@ -60,18 +60,18 @@ export const lightTheme: ThemeConfig = {
 export const modeVisuals = {
   dark: {
     base: "#0A0A0A",
-    canvasOpacity: 0.9,
-    glow: "radial-gradient(120% 65% at 50% 100%, rgba(118,185,0,0.22) 0%, rgba(118,185,0,0.09) 38%, transparent 72%)",
-    nodeAlpha: 0.75,
-    lineAlpha: 0.2,
-    triAlpha: 0.3,
+    canvasOpacity: 1,
+    glow: "radial-gradient(130% 78% at 50% 100%, rgba(118,185,0,0.34) 0%, rgba(118,185,0,0.16) 40%, transparent 76%)",
+    nodeAlpha: 0.95,
+    lineAlpha: 0.3,
+    triAlpha: 0.42,
   },
   light: {
     base: "#f4f6f8",
-    canvasOpacity: 0.7,
-    glow: "radial-gradient(120% 65% at 50% 100%, rgba(118,185,0,0.13) 0%, rgba(118,185,0,0.05) 38%, transparent 72%)",
-    nodeAlpha: 0.6,
-    lineAlpha: 0.16,
-    triAlpha: 0.2,
+    canvasOpacity: 0.9,
+    glow: "radial-gradient(130% 78% at 50% 100%, rgba(118,185,0,0.22) 0%, rgba(118,185,0,0.1) 40%, transparent 76%)",
+    nodeAlpha: 0.8,
+    lineAlpha: 0.24,
+    triAlpha: 0.32,
   },
 } as const;
