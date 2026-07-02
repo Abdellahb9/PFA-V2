@@ -1,4 +1,5 @@
 """Celery application instance and beat schedule."""
+
 from __future__ import annotations
 
 from celery import Celery
@@ -14,6 +15,7 @@ celery_app = Celery(
         "app.tasks.cv_analysis",
         "app.tasks.matching_tasks",
         "app.tasks.notifications",
+        "app.tasks.rag_ingestion",
     ],
 )
 
@@ -24,7 +26,7 @@ celery_app.conf.update(
     timezone="Africa/Casablanca",
     enable_utc=True,
     task_track_started=True,
-    task_time_limit=600,          # hard limit: 10 min per task
+    task_time_limit=600,  # hard limit: 10 min per task
     task_soft_time_limit=540,
     worker_max_tasks_per_child=50,
 )
