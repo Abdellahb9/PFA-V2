@@ -87,14 +87,15 @@ def answer_query(
 
     if intent == "matching_explanation":
         if assignment_id is None:
-            return {
-                "intent": intent,
-                "answer": (
-                    "Précisez l'affectation concernée (assignment_id) pour "
-                    "obtenir l'explication du score."
-                ),
-                "sources": [],
-            }
+            from app.services.rag.language import detect_language
+
+            answer = (
+                "Précisez l'affectation concernée (assignment_id) pour "
+                "obtenir l'explication du score."
+                if detect_language(query) == "fr"
+                else "Provide the assignment_id of the assignment to explain its score."
+            )
+            return {"intent": intent, "answer": answer, "sources": []}
         results = get_score_breakdown(db, assignment_id)
         sources = [results] if results else []
     elif intent == "candidate_search":

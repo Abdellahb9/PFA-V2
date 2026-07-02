@@ -52,10 +52,11 @@ const INTENT_LABELS: Record<AssistantIntent, { label: string; color: string }> =
   policy_qa: { label: "Documents & politique", color: "green" },
 };
 
+// The assistant answers in the language of the question (FR / EN).
 const EXAMPLES = [
   "Trouve-moi des candidats Python avec au moins 2 ans d'expérience",
   "Quelle est la durée maximale d'un stage ?",
-  "Pourquoi ce candidat a-t-il obtenu ce score de matching ?",
+  "What is the internship remuneration policy?",
 ];
 
 interface ChatTurn {
@@ -285,7 +286,7 @@ export default function AssistantPage() {
                 type="warning"
                 showIcon
                 message="Base documentaire indisponible"
-                description="L'API assistant n'est pas joignable (réservée au backend FastAPI)."
+                description="L'API assistant n'est pas joignable."
               />
             ) : !docs.data?.length ? (
               <Empty description="Aucun document indexé" />

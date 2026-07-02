@@ -81,3 +81,38 @@ def test_template_answer_matching_explanation_grounds_in_breakdown():
     assert "78%" in answer
     assert "python" in answer  # matched skill
     assert "sql" in answer  # missing skill
+
+
+def test_detect_language():
+    from app.services.rag.language import detect_language
+
+    assert detect_language("Quelle est la durée maximale d'un stage ?") == "fr"
+    assert detect_language("Trouve-moi des candidats avec 3 ans d'expérience") == "fr"
+    assert detect_language("What is the maximum duration of an internship?") == "en"
+    assert detect_language("Find candidates who know react with 2 years of experience") == "en"
+    # Ambiguous input defaults to French (primary audience).
+    assert detect_language("python sql docker") == "fr"
+
+
+def test_empty_answers_english():
+    assert "I cannot find" in _empty_answer("policy_qa", "en")
+    assert "Assignment not found" in _empty_answer("matching_explanation", "en")
+    assert "No results" in _empty_answer("candidate_search", "en")
+
+
+def test_template_answer_candidate_search_english():
+    results = [
+        {
+            "type": "candidate",
+            "candidate_id": 1,
+            "name": "Amina El Idrissi",
+            "education_level": "Bac+5",
+            "field_of_study": "Informatique",
+            "years_experience": 3.0,
+            "skills": ["python", "sql"],
+            "similarity": 0.87,
+        }
+    ]
+    answer = _template_answer("candidate_search", results, "en")
+    assert "Most relevant candidates" in answer
+    assert "year(s) of experience" in answer

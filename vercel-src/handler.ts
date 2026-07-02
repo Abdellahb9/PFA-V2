@@ -18,6 +18,7 @@ import offerRankings from "../netlify/functions/offer-rankings";
 import capacityForecast from "../netlify/functions/capacity-forecast";
 import createUploadUrl from "../netlify/functions/create-upload-url";
 import analyzeBackground from "../netlify/functions/analyze-application-background";
+import assistant from "../netlify/functions/assistant";
 
 // Handlers are the Netlify v2 defaults; they only read `ctx.params` at runtime,
 // so `ctx` is loosely typed here to accept every handler signature.
@@ -30,6 +31,9 @@ interface Route {
 
 // Order matters: most specific patterns first.
 const routes: Route[] = [
+  { re: /^\/api\/assistant\/documents\/([^/]+)\/?$/, fn: assistant, keys: ["name"] },
+  { re: /^\/api\/assistant\/(?:query|documents)\/?$/, fn: assistant },
+
   { re: /^\/api\/applications\/([^/]+)\/([^/]+)\/?$/, fn: applications, keys: ["id", "action"] },
   { re: /^\/api\/applications\/([^/]+)\/?$/, fn: applications, keys: ["id"] },
   { re: /^\/api\/applications\/?$/, fn: applications },
