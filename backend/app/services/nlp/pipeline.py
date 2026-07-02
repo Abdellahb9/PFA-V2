@@ -4,6 +4,7 @@ Given raw CV text, produces a structured ``ParsedProfile`` containing personal
 info, education metadata, detected skills (with weights) and a semantic
 embedding ready for the matching engine.
 """
+
 from __future__ import annotations
 
 import logging
@@ -191,8 +192,9 @@ def parse_cv(text: str) -> ParsedProfile:
     return profile
 
 
-def build_offer_text(title: str, description: str | None, field_name: str | None,
-                     skills: list[str]) -> str:
+def build_offer_text(
+    title: str, description: str | None, field_name: str | None, skills: list[str]
+) -> str:
     """Compose a single text to embed for an internship offer."""
     parts = [title or "", description or "", field_name or "", " ".join(skills)]
     return " . ".join(p for p in parts if p)

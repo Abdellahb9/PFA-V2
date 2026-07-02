@@ -1,4 +1,5 @@
 """Internship offer (departmental need) and its required skills."""
+
 from __future__ import annotations
 
 import enum
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
     from app.models.skill import Skill
 
 
-class OfferStatus(str, enum.Enum):
+class OfferStatus(enum.StrEnum):
     OPEN = "open"
     CLOSED = "closed"
     DRAFT = "draft"
@@ -52,20 +53,18 @@ class InternshipOffer(Base, TimestampMixin):
         Vector(settings.EMBEDDING_DIM), nullable=True
     )
 
-    department: Mapped["Department"] = relationship(back_populates="offers")
-    required_skills: Mapped[list["OfferSkill"]] = relationship(
+    department: Mapped[Department] = relationship(back_populates="offers")
+    required_skills: Mapped[list[OfferSkill]] = relationship(
         back_populates="offer", cascade="all, delete-orphan"
     )
-    applications: Mapped[list["Application"]] = relationship(back_populates="offer")
+    applications: Mapped[list[Application]] = relationship(back_populates="offer")
 
 
 class OfferSkill(Base):
     """Association object: an offer requires a skill with an importance weight."""
 
     __tablename__ = "offer_skills"
-    __table_args__ = (
-        UniqueConstraint("offer_id", "skill_id", name="uq_offer_skill"),
-    )
+    __table_args__ = (UniqueConstraint("offer_id", "skill_id", name="uq_offer_skill"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     offer_id: Mapped[int] = mapped_column(
@@ -78,8 +77,8 @@ class OfferSkill(Base):
     weight: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     required: Mapped[bool] = mapped_column(default=False, nullable=False)
 
-    offer: Mapped["InternshipOffer"] = relationship(back_populates="required_skills")
-    skill: Mapped["Skill"] = relationship()
+    offer: Mapped[InternshipOffer] = relationship(back_populates="required_skills")
+    skill: Mapped[Skill] = relationship()
 
     @property
     def name(self) -> str:

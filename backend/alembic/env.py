@@ -1,16 +1,16 @@
 """Alembic environment - online migrations using the app settings + metadata."""
+
 from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import create_engine, pool
-
-from app.core.config import settings
-from app.core.database import Base
 
 # Import all models so they register on Base.metadata for autogenerate.
 import app.models  # noqa: F401
+from alembic import context
+from app.core.config import settings
+from app.core.database import Base
 
 config = context.config
 # NOTE: we deliberately do NOT call config.set_main_option("sqlalchemy.url", ...).

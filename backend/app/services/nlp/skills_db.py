@@ -4,6 +4,7 @@ A curated, bilingual (FR/EN) gazetteer of skills relevant to OCP/PHOSBOUCRAA
 internships (engineering, IT, chemistry, management). Each canonical skill maps
 to a list of surface forms / synonyms that may appear in a CV.
 """
+
 from __future__ import annotations
 
 import unicodedata
@@ -23,10 +24,19 @@ SKILL_GAZETTEER: dict[str, tuple[SkillCategory, list[str]]] = {
         SkillCategory.TECHNICAL,
         ["machine learning", "ml", "apprentissage automatique", "scikit-learn", "sklearn"],
     ),
-    "deep learning": (SkillCategory.TECHNICAL, ["deep learning", "réseaux de neurones", "neural networks"]),
+    "deep learning": (
+        SkillCategory.TECHNICAL,
+        ["deep learning", "réseaux de neurones", "neural networks"],
+    ),
     "nlp": (SkillCategory.TECHNICAL, ["nlp", "traitement du langage", "spacy", "transformers"]),
-    "data science": (SkillCategory.TECHNICAL, ["data science", "science des données", "pandas", "numpy"]),
-    "data analysis": (SkillCategory.TECHNICAL, ["data analysis", "analyse de données", "power bi", "tableau"]),
+    "data science": (
+        SkillCategory.TECHNICAL,
+        ["data science", "science des données", "pandas", "numpy"],
+    ),
+    "data analysis": (
+        SkillCategory.TECHNICAL,
+        ["data analysis", "analyse de données", "power bi", "tableau"],
+    ),
     "react": (SkillCategory.TECHNICAL, ["react", "react.js", "reactjs"]),
     "fastapi": (SkillCategory.TECHNICAL, ["fastapi"]),
     "docker": (SkillCategory.TECHNICAL, ["docker", "conteneurisation", "containerization"]),
@@ -35,21 +45,39 @@ SKILL_GAZETTEER: dict[str, tuple[SkillCategory, list[str]]] = {
     "linux": (SkillCategory.TECHNICAL, ["linux", "unix", "bash"]),
     # --- Engineering / industry ---
     "automation": (SkillCategory.DOMAIN, ["automatisme", "automation", "automate", "plc", "scada"]),
-    "electrical engineering": (SkillCategory.DOMAIN, ["génie électrique", "electrical engineering", "électrotechnique"]),
-    "mechanical engineering": (SkillCategory.DOMAIN, ["génie mécanique", "mechanical engineering", "mécanique"]),
-    "industrial engineering": (SkillCategory.DOMAIN, ["génie industriel", "industrial engineering"]),
+    "electrical engineering": (
+        SkillCategory.DOMAIN,
+        ["génie électrique", "electrical engineering", "électrotechnique"],
+    ),
+    "mechanical engineering": (
+        SkillCategory.DOMAIN,
+        ["génie mécanique", "mechanical engineering", "mécanique"],
+    ),
+    "industrial engineering": (
+        SkillCategory.DOMAIN,
+        ["génie industriel", "industrial engineering"],
+    ),
     "process engineering": (SkillCategory.DOMAIN, ["génie des procédés", "process engineering"]),
     "maintenance": (SkillCategory.DOMAIN, ["maintenance", "ged", "gmao"]),
     "chemistry": (SkillCategory.DOMAIN, ["chimie", "chemistry", "chimie analytique"]),
     "quality": (SkillCategory.DOMAIN, ["qualité", "quality", "iso 9001", "qhse"]),
     "supply chain": (SkillCategory.DOMAIN, ["supply chain", "logistique", "logistics"]),
-    "project management": (SkillCategory.DOMAIN, ["gestion de projet", "project management", "pmp", "agile", "scrum"]),
-    "finance": (SkillCategory.DOMAIN, ["finance", "comptabilité", "accounting", "contrôle de gestion"]),
+    "project management": (
+        SkillCategory.DOMAIN,
+        ["gestion de projet", "project management", "pmp", "agile", "scrum"],
+    ),
+    "finance": (
+        SkillCategory.DOMAIN,
+        ["finance", "comptabilité", "accounting", "contrôle de gestion"],
+    ),
     "marketing": (SkillCategory.DOMAIN, ["marketing", "communication"]),
     "hr": (SkillCategory.DOMAIN, ["ressources humaines", "rh", "human resources", "hr"]),
     # --- Soft skills ---
     "teamwork": (SkillCategory.SOFT, ["travail en équipe", "teamwork", "esprit d'équipe"]),
-    "communication": (SkillCategory.SOFT, ["communication", "communication écrite", "communication orale"]),
+    "communication": (
+        SkillCategory.SOFT,
+        ["communication", "communication écrite", "communication orale"],
+    ),
     "leadership": (SkillCategory.SOFT, ["leadership", "encadrement"]),
     "problem solving": (SkillCategory.SOFT, ["résolution de problèmes", "problem solving"]),
     "autonomy": (SkillCategory.SOFT, ["autonomie", "autonomy"]),
@@ -64,9 +92,7 @@ SKILL_GAZETTEER: dict[str, tuple[SkillCategory, list[str]]] = {
 def normalize(text: str) -> str:
     """Lower-case, strip accents and collapse whitespace for robust matching."""
     text = text.strip().lower()
-    text = "".join(
-        c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn"
-    )
+    text = "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn")
     return " ".join(text.split())
 
 

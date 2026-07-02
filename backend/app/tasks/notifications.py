@@ -3,10 +3,11 @@
 For the PFE scope this records notifications and simulates delivery; wiring a
 real SMTP server is a one-line change in ``_deliver``.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.core.celery_app import celery_app
 from app.core.database import SessionLocal
@@ -23,8 +24,7 @@ def _deliver(notification: Notification) -> None:
 
 
 @celery_app.task(name="app.tasks.notifications.send_email")
-def send_email(recipient: str, subject: str, body: str,
-               application_id: int | None = None) -> dict:
+def send_email(recipient: str, subject: str, body: str, application_id: int | None = None) -> dict:
     """Persist and 'send' a single email notification."""
     db = SessionLocal()
     try:
@@ -42,7 +42,7 @@ def send_email(recipient: str, subject: str, body: str,
         try:
             _deliver(notification)
             notification.status = NotificationStatus.SENT
-            notification.sent_at = datetime.now(timezone.utc)
+            notification.sent_at = datetime.now(UTC)
         except Exception as exc:  # pragma: no cover
             notification.status = NotificationStatus.FAILED
             notification.error = str(exc)

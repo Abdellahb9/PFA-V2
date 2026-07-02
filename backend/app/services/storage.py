@@ -1,4 +1,5 @@
 """MinIO / S3-compatible object storage helper for uploaded documents."""
+
 from __future__ import annotations
 
 import io

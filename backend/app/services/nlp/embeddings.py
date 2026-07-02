@@ -1,4 +1,5 @@
 """Sentence-Transformers embedding model (lazy singleton) + Redis cache."""
+
 from __future__ import annotations
 
 import hashlib

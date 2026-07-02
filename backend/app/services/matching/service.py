@@ -3,6 +3,7 @@
 Loads candidate/offer profiles from the DB, runs the optimisation and
 (optionally) persists the resulting assignments + a MatchingRun record.
 """
+
 from __future__ import annotations
 
 import logging
@@ -56,9 +57,7 @@ def _load_candidate_profiles(db: Session) -> list[CandidateProfile]:
     stmt = (
         select(Application)
         .where(Application.status.in_([ApplicationStatus.PARSED, ApplicationStatus.UNDER_REVIEW]))
-        .options(
-            selectinload(Application.candidate).selectinload(Candidate.skills)
-        )
+        .options(selectinload(Application.candidate).selectinload(Candidate.skills))
     )
     profiles: list[CandidateProfile] = []
     for app in db.scalars(stmt).all():

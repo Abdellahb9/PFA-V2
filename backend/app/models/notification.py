@@ -1,4 +1,5 @@
 """Outbound notification (email) record."""
+
 from __future__ import annotations
 
 import enum
@@ -11,7 +12,7 @@ from app.core.database import Base
 from app.models.mixins import TimestampMixin
 
 
-class NotificationStatus(str, enum.Enum):
+class NotificationStatus(enum.StrEnum):
     QUEUED = "queued"
     SENT = "sent"
     FAILED = "failed"
@@ -26,8 +27,11 @@ class Notification(Base, TimestampMixin):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     channel: Mapped[str] = mapped_column(String(40), default="email", nullable=False)
     status: Mapped[NotificationStatus] = mapped_column(
-        Enum(NotificationStatus, name="notification_status",
-             values_callable=lambda e: [m.value for m in e]),
+        Enum(
+            NotificationStatus,
+            name="notification_status",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         default=NotificationStatus.QUEUED,
         nullable=False,
     )

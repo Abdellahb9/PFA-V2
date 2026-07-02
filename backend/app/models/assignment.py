@@ -1,4 +1,5 @@
 """Assignment (affectation) of a candidate to an internship offer."""
+
 from __future__ import annotations
 
 import enum
@@ -18,10 +19,11 @@ if TYPE_CHECKING:
     from app.models.offer import InternshipOffer
 
 
-class AssignmentStatus(str, enum.Enum):
-    PROPOSED = "proposed"      # produced by the optimiser, awaiting validation
-    CONFIRMED = "confirmed"    # validated by a recruiter/admin
-    REJECTED = "rejected"      # discarded
+class AssignmentStatus(enum.StrEnum):
+    PROPOSED = "proposed"  # produced by the optimiser, awaiting validation
+    CONFIRMED = "confirmed"  # validated by a recruiter/admin
+    REJECTED = "rejected"  # discarded
+
 
 class Assignment(Base, TimestampMixin):
     __tablename__ = "assignments"
@@ -48,14 +50,17 @@ class Assignment(Base, TimestampMixin):
     # Breakdown of the score (semantic / skills / education) for explainability.
     score_breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[AssignmentStatus] = mapped_column(
-        Enum(AssignmentStatus, name="assignment_status",
-             values_callable=lambda e: [m.value for m in e]),
+        Enum(
+            AssignmentStatus,
+            name="assignment_status",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         default=AssignmentStatus.PROPOSED,
         nullable=False,
     )
     decided_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    application: Mapped["Application"] = relationship(back_populates="assignment")
-    candidate: Mapped["Candidate"] = relationship()
-    offer: Mapped["InternshipOffer"] = relationship()
-    matching_run: Mapped["MatchingRun | None"] = relationship(back_populates="assignments")
+    application: Mapped[Application] = relationship(back_populates="assignment")
+    candidate: Mapped[Candidate] = relationship()
+    offer: Mapped[InternshipOffer] = relationship()
+    matching_run: Mapped[MatchingRun | None] = relationship(back_populates="assignments")

@@ -1,4 +1,5 @@
 """Public (unauthenticated) read-only endpoints for the landing page."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends

@@ -4,6 +4,7 @@ Primary path uses PyMuPDF (fast, accurate for digital PDFs); pdfplumber is a
 fallback for tricky layouts/tables. Scanned/image-only PDFs would route to OCR
 (Tesseract) — the hook is provided but OCR is optional at runtime.
 """
+
 from __future__ import annotations
 
 import io

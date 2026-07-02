@@ -1,4 +1,5 @@
 """Celery task: run the global Hungarian assignment optimisation."""
+
 from __future__ import annotations
 
 import logging

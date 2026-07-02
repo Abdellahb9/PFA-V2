@@ -1,4 +1,5 @@
 """Record of a global matching/optimisation run (Hungarian algorithm)."""
+
 from __future__ import annotations
 
 import enum
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
     from app.models.assignment import Assignment
 
 
-class MatchingRunStatus(str, enum.Enum):
+class MatchingRunStatus(enum.StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -28,8 +29,11 @@ class MatchingRun(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     algorithm: Mapped[str] = mapped_column(String(60), default="hungarian", nullable=False)
     status: Mapped[MatchingRunStatus] = mapped_column(
-        Enum(MatchingRunStatus, name="matching_run_status",
-             values_callable=lambda e: [m.value for m in e]),
+        Enum(
+            MatchingRunStatus,
+            name="matching_run_status",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         default=MatchingRunStatus.PENDING,
         nullable=False,
     )
@@ -42,4 +46,4 @@ class MatchingRun(Base, TimestampMixin):
     params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     triggered_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    assignments: Mapped[list["Assignment"]] = relationship(back_populates="matching_run")
+    assignments: Mapped[list[Assignment]] = relationship(back_populates="matching_run")

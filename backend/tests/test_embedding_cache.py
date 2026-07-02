@@ -1,4 +1,5 @@
 """Unit tests for the Redis-backed embedding cache (no Redis, no model)."""
+
 from __future__ import annotations
 
 from app.core.config import settings

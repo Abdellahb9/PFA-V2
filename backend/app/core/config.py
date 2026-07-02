@@ -1,4 +1,5 @@
 """Application settings loaded from environment variables (Pydantic v2)."""
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -10,9 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Central typed configuration for the whole backend."""
 
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # --- General ---
     PROJECT_NAME: str = "Assistant IA PHOSBOUCRAA"
@@ -20,9 +19,7 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
 
     # --- Database ---
-    DATABASE_URL: str = (
-        "postgresql+psycopg://phosboucraa:phosboucraa@db:5432/phosboucraa"
-    )
+    DATABASE_URL: str = "postgresql+psycopg://phosboucraa:phosboucraa@db:5432/phosboucraa"
     # Set true when connecting through a transaction-mode pooler (e.g. Supabase
     # port 6543 / pgbouncer) which does not support prepared statements.
     DB_DISABLE_PREPARED_STATEMENTS: bool = False
@@ -51,9 +48,7 @@ class Settings(BaseSettings):
     MISTRAL_API_KEY: str = ""
     SPACY_MODEL_FR: str = "fr_core_news_md"
     SPACY_MODEL_EN: str = "en_core_web_sm"
-    EMBEDDING_MODEL: str = (
-        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-    )
+    EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     EMBEDDING_DIM: int = 384
 
     # --- Embedding cache (Redis DB2) ---

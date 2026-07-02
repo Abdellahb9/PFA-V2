@@ -4,10 +4,12 @@ Revision ID: 0001
 Revises:
 Create Date: 2026-02-16
 """
-from alembic import op
+
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 from pgvector.sqlalchemy import Vector
+from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision = "0001"
 down_revision = None
@@ -17,7 +19,7 @@ depends_on = None
 # Embedding dimension must match settings.EMBEDDING_DIM.
 EMBED_DIM = 384
 
-_TS = dict(server_default=sa.text("now()"), nullable=False)
+_TS = {"server_default": sa.text("now()"), "nullable": False}
 
 
 def upgrade() -> None:
@@ -98,10 +100,15 @@ def upgrade() -> None:
     op.create_table(
         "candidate_skills",
         sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("candidate_id", sa.Integer,
-                  sa.ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("skill_id", sa.Integer,
-                  sa.ForeignKey("skills.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "candidate_id",
+            sa.Integer,
+            sa.ForeignKey("candidates.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "skill_id", sa.Integer, sa.ForeignKey("skills.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("weight", sa.Float, nullable=False, server_default="1.0"),
         sa.UniqueConstraint("candidate_id", "skill_id", name="uq_candidate_skill"),
     )
@@ -110,8 +117,12 @@ def upgrade() -> None:
     op.create_table(
         "internship_offers",
         sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("department_id", sa.Integer,
-                  sa.ForeignKey("departments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "department_id",
+            sa.Integer,
+            sa.ForeignKey("departments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("title", sa.String(200), nullable=False),
         sa.Column("description", sa.Text, nullable=True),
         sa.Column("field", sa.String(180), nullable=True),
@@ -134,10 +145,15 @@ def upgrade() -> None:
     op.create_table(
         "offer_skills",
         sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("offer_id", sa.Integer,
-                  sa.ForeignKey("internship_offers.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("skill_id", sa.Integer,
-                  sa.ForeignKey("skills.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "offer_id",
+            sa.Integer,
+            sa.ForeignKey("internship_offers.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "skill_id", sa.Integer, sa.ForeignKey("skills.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("weight", sa.Float, nullable=False, server_default="1.0"),
         sa.Column("required", sa.Boolean, nullable=False, server_default=sa.false()),
         sa.UniqueConstraint("offer_id", "skill_id", name="uq_offer_skill"),
@@ -147,15 +163,28 @@ def upgrade() -> None:
     op.create_table(
         "applications",
         sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("candidate_id", sa.Integer,
-                  sa.ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("offer_id", sa.Integer,
-                  sa.ForeignKey("internship_offers.id", ondelete="SET NULL"), nullable=True),
+        sa.Column(
+            "candidate_id",
+            sa.Integer,
+            sa.ForeignKey("candidates.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "offer_id",
+            sa.Integer,
+            sa.ForeignKey("internship_offers.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column(
             "status",
             sa.Enum(
-                "submitted", "parsing", "parsed", "under_review",
-                "assigned", "rejected", "failed",
+                "submitted",
+                "parsing",
+                "parsed",
+                "under_review",
+                "assigned",
+                "rejected",
+                "failed",
                 name="application_status",
             ),
             nullable=False,
@@ -173,8 +202,12 @@ def upgrade() -> None:
     op.create_table(
         "documents",
         sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("application_id", sa.Integer,
-                  sa.ForeignKey("applications.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "application_id",
+            sa.Integer,
+            sa.ForeignKey("applications.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column(
             "kind",
             sa.Enum("cv", "cover_letter", "transcript", "other", name="document_kind"),
@@ -216,14 +249,30 @@ def upgrade() -> None:
     op.create_table(
         "assignments",
         sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("application_id", sa.Integer,
-                  sa.ForeignKey("applications.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("candidate_id", sa.Integer,
-                  sa.ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("offer_id", sa.Integer,
-                  sa.ForeignKey("internship_offers.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("matching_run_id", sa.Integer,
-                  sa.ForeignKey("matching_runs.id", ondelete="SET NULL"), nullable=True),
+        sa.Column(
+            "application_id",
+            sa.Integer,
+            sa.ForeignKey("applications.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "candidate_id",
+            sa.Integer,
+            sa.ForeignKey("candidates.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "offer_id",
+            sa.Integer,
+            sa.ForeignKey("internship_offers.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "matching_run_id",
+            sa.Integer,
+            sa.ForeignKey("matching_runs.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("match_score", sa.Float, nullable=False, server_default="0"),
         sa.Column("score_breakdown", postgresql.JSONB, nullable=True),
         sa.Column(
@@ -252,8 +301,12 @@ def upgrade() -> None:
             nullable=False,
             server_default="queued",
         ),
-        sa.Column("application_id", sa.Integer,
-                  sa.ForeignKey("applications.id", ondelete="SET NULL"), nullable=True),
+        sa.Column(
+            "application_id",
+            sa.Integer,
+            sa.ForeignKey("applications.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("error", sa.Text, nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), **_TS),

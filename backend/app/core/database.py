@@ -1,4 +1,5 @@
 """SQLAlchemy engine, session factory and declarative base."""
+
 from __future__ import annotations
 
 from collections.abc import Generator
@@ -21,9 +22,7 @@ engine = create_engine(
     connect_args=_connect_args,
 )
 
-SessionLocal = sessionmaker(
-    bind=engine, autocommit=False, autoflush=False, future=True
-)
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, future=True)
 
 
 class Base(DeclarativeBase):

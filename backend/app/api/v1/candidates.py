@@ -1,4 +1,5 @@
 """Candidate endpoints (list / detail with extracted skills)."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -45,8 +46,9 @@ def list_candidates(
 
 
 @router.get("/{candidate_id}", response_model=CandidateOut)
-def get_candidate(candidate_id: int, db: Session = Depends(get_db),
-                  _: User = Depends(get_current_user)):
+def get_candidate(
+    candidate_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)
+):
     cand = db.get(Candidate, candidate_id)
     if not cand:
         raise HTTPException(status_code=404, detail="Candidat introuvable")

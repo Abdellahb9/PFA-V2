@@ -1,8 +1,9 @@
 """Celery task: parse an application's documents and build the candidate profile."""
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.core.celery_app import celery_app
 from app.core.database import SessionLocal
@@ -73,7 +74,7 @@ def analyze_application(self, application_id: int) -> dict:
 
         # 5) Mark ready for matching.
         app.status = ApplicationStatus.PARSED
-        app.parsed_at = datetime.now(timezone.utc)
+        app.parsed_at = datetime.now(UTC)
         db.commit()
 
         # 6) Compute an indicative best-fit score across open offers.
@@ -88,6 +89,6 @@ def analyze_application(self, application_id: int) -> dict:
     except Exception as exc:  # pragma: no cover - retry on transient errors
         db.rollback()
         logger.exception("CV analysis failed for %s", application_id)
-        raise self.retry(exc=exc, countdown=10)
+        raise self.retry(exc=exc, countdown=10) from exc
     finally:
         db.close()

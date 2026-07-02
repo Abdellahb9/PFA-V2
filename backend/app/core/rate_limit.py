@@ -4,6 +4,7 @@ Counts requests per client IP in a sliding fixed window. Authenticated staff
 (valid bearer token) bypass the limit. Fails open if Redis is unavailable so a
 cache outage never blocks legitimate users.
 """
+
 from __future__ import annotations
 
 import logging

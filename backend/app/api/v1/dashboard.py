@@ -1,10 +1,10 @@
 """Dashboard analytics endpoint: KPIs + chart series for the admin UI."""
+
 from __future__ import annotations
 
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
-
-from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
@@ -44,24 +44,36 @@ def get_dashboard(db: Session = Depends(get_db), _: User = Depends(get_current_u
     total_offers = db.scalar(select(func.count(InternshipOffer.id))) or 0
     total_slots = db.scalar(select(func.coalesce(func.sum(InternshipOffer.slots), 0))) or 0
 
-    assigned_count = db.scalar(
-        select(func.count(Application.id)).where(
-            Application.status == ApplicationStatus.ASSIGNED
-        )
-    ) or 0
-    pending_count = db.scalar(
-        select(func.count(Application.id)).where(
-            Application.status.in_(
-                [ApplicationStatus.SUBMITTED, ApplicationStatus.PARSED,
-                 ApplicationStatus.UNDER_REVIEW]
+    assigned_count = (
+        db.scalar(
+            select(func.count(Application.id)).where(
+                Application.status == ApplicationStatus.ASSIGNED
             )
         )
-    ) or 0
-    avg_score = db.scalar(
-        select(func.coalesce(func.avg(Assignment.match_score), 0.0)).where(
-            Assignment.status != AssignmentStatus.REJECTED
+        or 0
+    )
+    pending_count = (
+        db.scalar(
+            select(func.count(Application.id)).where(
+                Application.status.in_(
+                    [
+                        ApplicationStatus.SUBMITTED,
+                        ApplicationStatus.PARSED,
+                        ApplicationStatus.UNDER_REVIEW,
+                    ]
+                )
+            )
         )
-    ) or 0.0
+        or 0
+    )
+    avg_score = (
+        db.scalar(
+            select(func.coalesce(func.avg(Assignment.match_score), 0.0)).where(
+                Assignment.status != AssignmentStatus.REJECTED
+            )
+        )
+        or 0.0
+    )
 
     kpis = KpiSummary(
         total_candidates=total_candidates,
@@ -70,7 +82,9 @@ def get_dashboard(db: Session = Depends(get_db), _: User = Depends(get_current_u
         total_slots=int(total_slots),
         assigned_count=assigned_count,
         pending_count=pending_count,
-        assignment_rate=round(assigned_count / total_applications, 3) if total_applications else 0.0,
+        assignment_rate=(
+            round(assigned_count / total_applications, 3) if total_applications else 0.0
+        ),
         capacity_fill_rate=round(assigned_count / total_slots, 3) if total_slots else 0.0,
         average_match_score=round(float(avg_score), 3),
     )
@@ -80,8 +94,7 @@ def get_dashboard(db: Session = Depends(get_db), _: User = Depends(get_current_u
         select(Application.status, func.count(Application.id)).group_by(Application.status)
     ).all()
     applications_by_status = [
-        LabelValue(label=_STATUS_LABELS_FR.get(s.value, s.value), value=c)
-        for s, c in status_rows
+        LabelValue(label=_STATUS_LABELS_FR.get(s.value, s.value), value=c) for s, c in status_rows
     ]
 
     # --- Candidates by field of study ---

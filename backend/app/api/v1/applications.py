@@ -1,4 +1,5 @@
 """Application endpoints: submission (with CV upload) + listing + review."""
+
 from __future__ import annotations
 
 import io
@@ -130,8 +131,9 @@ async def submit_application(
     return ApplicationSubmitResponse(id=application.id, status=application.status)
 
 
-async def _store_upload(db: Session, application_id: int, file: UploadFile,
-                        kind: DocumentKind) -> None:
+async def _store_upload(
+    db: Session, application_id: int, file: UploadFile, kind: DocumentKind
+) -> None:
     """Validate size + real file type, upload to MinIO and record a Document row."""
     data = await file.read()
     if not data:
@@ -143,9 +145,7 @@ async def _store_upload(db: Session, application_id: int, file: UploadFile,
     name = (file.filename or "").lower()
     ext = next((e for e in _ALLOWED_SIGNATURES if name.endswith(e)), None)
     if ext is None:
-        raise HTTPException(
-            status_code=415, detail="Format non supporté : PDF ou DOCX uniquement"
-        )
+        raise HTTPException(status_code=415, detail="Format non supporté : PDF ou DOCX uniquement")
     if not data.startswith(_ALLOWED_SIGNATURES[ext]):
         raise HTTPException(
             status_code=415,
@@ -166,8 +166,9 @@ async def _store_upload(db: Session, application_id: int, file: UploadFile,
 
 
 @router.get("/{application_id}", response_model=ApplicationOut)
-def get_application(application_id: int, db: Session = Depends(get_db),
-                    _: User = Depends(get_current_user)):
+def get_application(
+    application_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)
+):
     app = db.get(Application, application_id)
     if not app:
         raise HTTPException(status_code=404, detail="Candidature introuvable")
@@ -191,8 +192,7 @@ def update_status(
 
 
 @router.post("/{application_id}/reanalyze", response_model=ApplicationOut)
-def reanalyze(application_id: int, db: Session = Depends(get_db),
-              _: User = Depends(require_staff)):
+def reanalyze(application_id: int, db: Session = Depends(get_db), _: User = Depends(require_staff)):
     """Re-trigger the NLP analysis for an application."""
     app = db.get(Application, application_id)
     if not app:

@@ -1,4 +1,5 @@
 """Uploaded document (CV, cover letter, transcript) stored in MinIO."""
+
 from __future__ import annotations
 
 import enum
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
     from app.models.application import Application
 
 
-class DocumentKind(str, enum.Enum):
+class DocumentKind(enum.StrEnum):
     CV = "cv"
     COVER_LETTER = "cover_letter"
     TRANSCRIPT = "transcript"
@@ -41,4 +42,4 @@ class Document(Base, TimestampMixin):
     # Text extracted by the parsing pipeline (PyMuPDF / OCR fallback).
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    application: Mapped["Application"] = relationship(back_populates="documents")
+    application: Mapped[Application] = relationship(back_populates="documents")

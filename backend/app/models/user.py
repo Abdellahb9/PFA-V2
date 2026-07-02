@@ -1,4 +1,5 @@
 """Application user (admin / recruiter / viewer)."""
+
 from __future__ import annotations
 
 import enum
@@ -10,12 +11,12 @@ from app.core.database import Base
 from app.models.mixins import TimestampMixin
 
 
-class UserRole(str, enum.Enum):
+class UserRole(enum.StrEnum):
     """Authorization roles used by the RBAC dependencies."""
 
-    ADMIN = "admin"          # full access, manages matching runs and users
+    ADMIN = "admin"  # full access, manages matching runs and users
     RECRUITER = "recruiter"  # reviews applications, confirms assignments
-    VIEWER = "viewer"        # read-only dashboards
+    VIEWER = "viewer"  # read-only dashboards
 
 
 class User(Base, TimestampMixin):

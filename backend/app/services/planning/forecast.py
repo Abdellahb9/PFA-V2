@@ -10,11 +10,12 @@ a weighted moving-average fallback and flags it. The SQLAlchemy/model imports ar
 done lazily inside :func:`forecast_departments` so the pure forecasting helpers
 (and their tests) don't require the full backend stack.
 """
+
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -25,9 +26,9 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 MONTHS = 12
-TARGET_PRESSURE = 4      # desired applicants per opened slot
-COLD_START_MIN = 5       # min applications (12m) before we forecast a department
-MIN_TRAIN_ROWS = 12      # min (dept, month) samples before XGBoost is trained
+TARGET_PRESSURE = 4  # desired applicants per opened slot
+COLD_START_MIN = 5  # min applications (12m) before we forecast a department
+MIN_TRAIN_ROWS = 12  # min (dept, month) samples before XGBoost is trained
 FEATURES = ["lag1", "lag2", "lag3", "roll3", "month", "capacity"]
 
 
@@ -36,7 +37,7 @@ FEATURES = ["lag1", "lag2", "lag3", "roll3", "month", "capacity"]
 # --------------------------------------------------------------------------- #
 def month_keys(count: int, *, now: datetime | None = None) -> list[str]:
     """The last ``count`` month keys ("YYYY-MM"), oldest first, ending this month."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     base = now.year * 12 + (now.month - 1)
     return [f"{(base - i) // 12:04d}-{((base - i) % 12) + 1:02d}" for i in range(count - 1, -1, -1)]
 
@@ -50,7 +51,7 @@ def fallback_forecast(demand: list[int]) -> int:
         return demand[0]
     recent = demand[-3:]
     weights = [0.2, 0.3, 0.5] if len(recent) == 3 else [0.4, 0.6]
-    wavg = sum(v * w for v, w in zip(recent, weights))
+    wavg = sum(v * w for v, w in zip(recent, weights, strict=False))
     slope = (recent[-1] - recent[0]) / max(1, len(recent) - 1)
     return max(0, round(wavg + slope * 0.5))
 
@@ -125,7 +126,7 @@ def recommend_slots(forecast: int, capacity: int) -> int:
 # --------------------------------------------------------------------------- #
 # Orchestrator (DB-backed).
 # --------------------------------------------------------------------------- #
-def forecast_departments(db: "Session") -> dict:
+def forecast_departments(db: Session) -> dict:
     """Load history, train/predict (or fall back), and assemble the response."""
     from sqlalchemy import select
 
@@ -208,6 +209,8 @@ def forecast_departments(db: "Session") -> dict:
     return {
         "model": model_name,
         "target_pressure": TARGET_PRESSURE,
-        "cold_start_global": all(r["cold_start"] for r in out_departments) if out_departments else True,
+        "cold_start_global": (
+            all(r["cold_start"] for r in out_departments) if out_departments else True
+        ),
         "departments": out_departments,
     }

@@ -1,4 +1,5 @@
 """Internship application (demande de stage) submitted by a candidate."""
+
 from __future__ import annotations
 
 import enum
@@ -18,16 +19,16 @@ if TYPE_CHECKING:
     from app.models.offer import InternshipOffer
 
 
-class ApplicationStatus(str, enum.Enum):
+class ApplicationStatus(enum.StrEnum):
     """Lifecycle of an application from submission to final assignment."""
 
-    SUBMITTED = "submitted"        # files received, awaiting parsing
-    PARSING = "parsing"            # NLP pipeline running
-    PARSED = "parsed"              # profile extracted, ready for matching
+    SUBMITTED = "submitted"  # files received, awaiting parsing
+    PARSING = "parsing"  # NLP pipeline running
+    PARSED = "parsed"  # profile extracted, ready for matching
     UNDER_REVIEW = "under_review"  # a recruiter is reviewing
-    ASSIGNED = "assigned"          # an assignment was confirmed
-    REJECTED = "rejected"          # not retained
-    FAILED = "failed"              # parsing error
+    ASSIGNED = "assigned"  # an assignment was confirmed
+    REJECTED = "rejected"  # not retained
+    FAILED = "failed"  # parsing error
 
 
 class Application(Base, TimestampMixin):
@@ -42,8 +43,11 @@ class Application(Base, TimestampMixin):
         ForeignKey("internship_offers.id", ondelete="SET NULL"), nullable=True, index=True
     )
     status: Mapped[ApplicationStatus] = mapped_column(
-        Enum(ApplicationStatus, name="application_status",
-             values_callable=lambda e: [m.value for m in e]),
+        Enum(
+            ApplicationStatus,
+            name="application_status",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         default=ApplicationStatus.SUBMITTED,
         nullable=False,
         index=True,
@@ -53,11 +57,11 @@ class Application(Base, TimestampMixin):
     match_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     parsed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    candidate: Mapped["Candidate"] = relationship(back_populates="applications")
-    offer: Mapped["InternshipOffer"] = relationship(back_populates="applications")
-    documents: Mapped[list["Document"]] = relationship(
+    candidate: Mapped[Candidate] = relationship(back_populates="applications")
+    offer: Mapped[InternshipOffer] = relationship(back_populates="applications")
+    documents: Mapped[list[Document]] = relationship(
         back_populates="application", cascade="all, delete-orphan"
     )
-    assignment: Mapped["Assignment | None"] = relationship(
+    assignment: Mapped[Assignment | None] = relationship(
         back_populates="application", uselist=False, cascade="all, delete-orphan"
     )

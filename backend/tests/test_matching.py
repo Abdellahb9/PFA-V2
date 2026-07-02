@@ -1,4 +1,5 @@
 """Unit tests for the scoring + Hungarian assignment engine (no DB needed)."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -26,9 +27,9 @@ def test_skill_overlap_full_and_partial():
 
 def test_education_fit_levels():
     assert education_fit("Bac+5", "Bac+5") == 1.0
-    assert education_fit("Bac+3", None) == 1.0          # no requirement
-    assert education_fit("Bac+3", "Bac+5") < 1.0        # under-qualified
-    assert education_fit("Bac+5", "Bac+3") == 1.0       # over-qualified is fine
+    assert education_fit("Bac+3", None) == 1.0  # no requirement
+    assert education_fit("Bac+3", "Bac+5") < 1.0  # under-qualified
+    assert education_fit("Bac+5", "Bac+3") == 1.0  # over-qualified is fine
 
 
 def test_composite_score_in_range():

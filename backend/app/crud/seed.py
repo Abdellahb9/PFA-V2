@@ -3,6 +3,7 @@
 Runs on application startup. Safe to call repeatedly — it only inserts records
 that are not already present.
 """
+
 from __future__ import annotations
 
 import logging
@@ -51,45 +52,116 @@ _DEPARTMENTS = [
 # (dept_code, title, field, slots, min_level, [(skill, weight, required)])
 _OFFERS = [
     (
-        "DSI", "Stage Développement IA / NLP", "Informatique", 2, "Bac+5",
-        [("python", 1.0, True), ("nlp", 0.9, True), ("machine learning", 0.8, False),
-         ("docker", 0.5, False), ("sql", 0.6, False)],
+        "DSI",
+        "Stage Développement IA / NLP",
+        "Informatique",
+        2,
+        "Bac+5",
+        [
+            ("python", 1.0, True),
+            ("nlp", 0.9, True),
+            ("machine learning", 0.8, False),
+            ("docker", 0.5, False),
+            ("sql", 0.6, False),
+        ],
     ),
     (
-        "DSI", "Stage Data Science", "Data Science", 1, "Bac+4",
-        [("python", 1.0, True), ("data science", 0.9, True), ("sql", 0.7, False),
-         ("machine learning", 0.7, False)],
+        "DSI",
+        "Stage Data Science",
+        "Data Science",
+        1,
+        "Bac+4",
+        [
+            ("python", 1.0, True),
+            ("data science", 0.9, True),
+            ("sql", 0.7, False),
+            ("machine learning", 0.7, False),
+        ],
     ),
     (
-        "MAINT", "Stage Automatisme & GMAO", "Génie électrique", 2, "Bac+3",
-        [("automation", 1.0, True), ("electrical engineering", 0.8, True),
-         ("maintenance", 0.7, False)],
+        "MAINT",
+        "Stage Automatisme & GMAO",
+        "Génie électrique",
+        2,
+        "Bac+3",
+        [
+            ("automation", 1.0, True),
+            ("electrical engineering", 0.8, True),
+            ("maintenance", 0.7, False),
+        ],
     ),
     (
-        "PROC", "Stage Optimisation des Procédés", "Génie des procédés", 2, "Bac+5",
-        [("process engineering", 1.0, True), ("chemistry", 0.7, False),
-         ("data analysis", 0.6, False)],
+        "PROC",
+        "Stage Optimisation des Procédés",
+        "Génie des procédés",
+        2,
+        "Bac+5",
+        [
+            ("process engineering", 1.0, True),
+            ("chemistry", 0.7, False),
+            ("data analysis", 0.6, False),
+        ],
     ),
     (
-        "QHSE", "Stage Système Qualité ISO 9001", "Qualité", 1, "Bac+3",
+        "QHSE",
+        "Stage Système Qualité ISO 9001",
+        "Qualité",
+        1,
+        "Bac+3",
         [("quality", 1.0, True), ("communication", 0.5, False)],
     ),
 ]
 
 # (first, last, email, field, level, [(skill, weight)])
 _CANDIDATES = [
-    ("Youssef", "El Khattabi", "youssef.elk@example.ma", "Informatique", "Bac+5",
-     [("python", 0.9), ("nlp", 0.8), ("machine learning", 0.8), ("docker", 0.6)]),
-    ("Salma", "Benjelloun", "salma.benj@example.ma", "Data Science", "Bac+5",
-     [("python", 0.9), ("data science", 0.9), ("sql", 0.8), ("machine learning", 0.7)]),
-    ("Omar", "Fassi", "omar.fassi@example.ma", "Génie électrique", "Bac+3",
-     [("automation", 0.9), ("electrical engineering", 0.8), ("maintenance", 0.6)]),
-    ("Imane", "Cherkaoui", "imane.cherk@example.ma", "Génie des procédés", "Bac+5",
-     [("process engineering", 0.9), ("chemistry", 0.7), ("data analysis", 0.6)]),
-    ("Mehdi", "Alaoui", "mehdi.alaoui@example.ma", "Qualité", "Bac+3",
-     [("quality", 0.9), ("communication", 0.7)]),
-    ("Nadia", "Bouhaddou", "nadia.bouh@example.ma", "Informatique", "Bac+4",
-     [("python", 0.7), ("sql", 0.7), ("data analysis", 0.6)]),
+    (
+        "Youssef",
+        "El Khattabi",
+        "youssef.elk@example.ma",
+        "Informatique",
+        "Bac+5",
+        [("python", 0.9), ("nlp", 0.8), ("machine learning", 0.8), ("docker", 0.6)],
+    ),
+    (
+        "Salma",
+        "Benjelloun",
+        "salma.benj@example.ma",
+        "Data Science",
+        "Bac+5",
+        [("python", 0.9), ("data science", 0.9), ("sql", 0.8), ("machine learning", 0.7)],
+    ),
+    (
+        "Omar",
+        "Fassi",
+        "omar.fassi@example.ma",
+        "Génie électrique",
+        "Bac+3",
+        [("automation", 0.9), ("electrical engineering", 0.8), ("maintenance", 0.6)],
+    ),
+    (
+        "Imane",
+        "Cherkaoui",
+        "imane.cherk@example.ma",
+        "Génie des procédés",
+        "Bac+5",
+        [("process engineering", 0.9), ("chemistry", 0.7), ("data analysis", 0.6)],
+    ),
+    (
+        "Mehdi",
+        "Alaoui",
+        "mehdi.alaoui@example.ma",
+        "Qualité",
+        "Bac+3",
+        [("quality", 0.9), ("communication", 0.7)],
+    ),
+    (
+        "Nadia",
+        "Bouhaddou",
+        "nadia.bouh@example.ma",
+        "Informatique",
+        "Bac+4",
+        [("python", 0.7), ("sql", 0.7), ("data analysis", 0.6)],
+    ),
 ]
 
 
@@ -130,9 +202,7 @@ def _seed_offers(db: Session, departments: dict[str, Department]) -> None:
                 OfferSkill(skill_id=skill.id, weight=weight, required=required)
             )
             skill_names.append(skill_name)
-        offer.embedding = embed_text(
-            build_offer_text(title, offer.description, field, skill_names)
-        )
+        offer.embedding = embed_text(build_offer_text(title, offer.description, field, skill_names))
 
 
 def _seed_candidates(db: Session) -> None:

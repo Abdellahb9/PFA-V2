@@ -1,4 +1,5 @@
 """Dashboard / analytics schemas."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel
@@ -11,8 +12,8 @@ class KpiSummary(BaseModel):
     total_slots: int
     assigned_count: int
     pending_count: int
-    assignment_rate: float        # assigned / total applications
-    capacity_fill_rate: float     # assigned / total slots
+    assignment_rate: float  # assigned / total applications
+    capacity_fill_rate: float  # assigned / total slots
     average_match_score: float
 
 

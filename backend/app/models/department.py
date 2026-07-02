@@ -1,4 +1,5 @@
 """Internal department / service that hosts interns."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -25,7 +26,7 @@ class Department(Base, TimestampMixin):
     # Total simultaneous interns the department can supervise.
     capacity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
-    offers: Mapped[list["InternshipOffer"]] = relationship(
+    offers: Mapped[list[InternshipOffer]] = relationship(
         back_populates="department", cascade="all, delete-orphan"
     )
 

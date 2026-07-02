@@ -5,6 +5,7 @@ clean structured fields out of a CV (name, education, field, experience, skills)
 When no provider is configured it returns ``None`` and the caller falls back to
 the deterministic spaCy + gazetteer pipeline — so the system runs fully offline.
 """
+
 from __future__ import annotations
 
 import json

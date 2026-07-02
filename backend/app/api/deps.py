@@ -1,4 +1,5 @@
 """Shared FastAPI dependencies: DB session, current user, RBAC guards."""
+
 from __future__ import annotations
 
 from collections.abc import Callable

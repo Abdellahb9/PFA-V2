@@ -1,4 +1,5 @@
 """Unit tests for the capacity-planning forecaster (no DB)."""
+
 from __future__ import annotations
 
 import pytest
@@ -16,8 +17,8 @@ def test_fallback_forecast():
     assert fallback_forecast([]) == 0
     assert fallback_forecast([7]) == 7
     assert fallback_forecast([5, 5, 5, 5]) == 5
-    assert fallback_forecast([2, 4, 6, 8, 10]) >= 8       # rising trend
-    assert fallback_forecast([10, 5, 0, 0]) >= 0          # never negative
+    assert fallback_forecast([2, 4, 6, 8, 10]) >= 8  # rising trend
+    assert fallback_forecast([10, 5, 0, 0]) >= 0  # never negative
 
 
 def test_month_keys_shape():
@@ -30,13 +31,13 @@ def test_month_keys_shape():
 def test_recommend_slots_targets_pressure_and_capacity():
     # 4 applicants per slot target -> 20 demand => 5 slots, capped at capacity.
     assert recommend_slots(20, 10) == 5
-    assert recommend_slots(20, 3) == 3      # capped by capacity
-    assert recommend_slots(0, 10) == 1      # at least one
+    assert recommend_slots(20, 3) == 3  # capped by capacity
+    assert recommend_slots(0, 10) == 1  # at least one
 
 
 def test_build_training_frame_shape():
     months = [f"2024-{m:02d}" for m in range(1, 13)]
-    series = {1: {months[i]: i + 1 for i in range(12)}, 2: {m: 5 for m in months}}
+    series = {1: {months[i]: i + 1 for i in range(12)}, 2: dict.fromkeys(months, 5)}
     frame = build_training_frame(series, {1: 10, 2: 8}, months)
     # 12 months -> 9 supervised rows (t in 3..11) per department.
     assert len(frame) == 2 * 9
@@ -48,7 +49,7 @@ def test_xgboost_trains_and_predicts():
     from app.services.planning.forecast import predict_next, train_model
 
     months = [f"2024-{m:02d}" for m in range(1, 13)]
-    series = {1: {months[i]: i + 1 for i in range(12)}, 2: {m: 5 for m in months}}
+    series = {1: {months[i]: i + 1 for i in range(12)}, 2: dict.fromkeys(months, 5)}
     caps = {1: 10, 2: 10}
     frame = build_training_frame(series, caps, months)
 

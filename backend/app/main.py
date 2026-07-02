@@ -1,4 +1,5 @@
 """FastAPI application entrypoint - Assistant IA PHOSBOUCRAA."""
+
 from __future__ import annotations
 
 import logging

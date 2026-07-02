@@ -15,6 +15,7 @@ Implementation:
 The matrix does not need to be square: scipy handles rectangular inputs and
 simply leaves the surplus side unassigned.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

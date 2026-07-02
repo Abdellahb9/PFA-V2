@@ -9,6 +9,7 @@ The final score is a weighted blend of three interpretable components:
 All components and the final score live in [0, 1]. A per-pair breakdown is
 returned alongside the score for explainability in the admin dashboard.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -59,7 +60,7 @@ class OfferProfile:
     department_name: str
     slots: int
     embedding: np.ndarray | None
-    skills: dict[str, float]   # required skill -> importance weight
+    skills: dict[str, float]  # required skill -> importance weight
     min_education_level: str | None
 
 
@@ -81,8 +82,7 @@ def semantic_similarity(a: np.ndarray | None, b: np.ndarray | None) -> float:
     return max(0.0, min(1.0, (cos + 1.0) / 2.0))
 
 
-def skill_overlap(candidate_skills: dict[str, float],
-                  offer_skills: dict[str, float]) -> float:
+def skill_overlap(candidate_skills: dict[str, float], offer_skills: dict[str, float]) -> float:
     """Weighted overlap: share of the offer's importance covered by the candidate."""
     if not offer_skills:
         return 0.0

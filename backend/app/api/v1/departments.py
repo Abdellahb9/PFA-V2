@@ -1,4 +1,5 @@
 """Department CRUD endpoints."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -36,8 +37,9 @@ def create_department(
 
 
 @router.get("/{department_id}", response_model=DepartmentOut)
-def get_department(department_id: int, db: Session = Depends(get_db),
-                   _: User = Depends(get_current_user)):
+def get_department(
+    department_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)
+):
     dept = db.get(Department, department_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Département introuvable")
@@ -59,9 +61,7 @@ def update_department(
     new_code = data.get("code")
     if new_code and new_code != dept.code:
         clash = db.scalar(
-            select(Department).where(
-                Department.code == new_code, Department.id != department_id
-            )
+            select(Department).where(Department.code == new_code, Department.id != department_id)
         )
         if clash:
             raise HTTPException(status_code=409, detail="Code de département déjà existant")
@@ -73,16 +73,15 @@ def update_department(
 
 
 @router.delete("/{department_id}", status_code=204)
-def delete_department(department_id: int, db: Session = Depends(get_db),
-                      _: User = Depends(require_staff)):
+def delete_department(
+    department_id: int, db: Session = Depends(get_db), _: User = Depends(require_staff)
+):
     dept = db.get(Department, department_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Département introuvable")
     # Referential integrity: block deletion while offers are still attached.
     offer_count = db.scalar(
-        select(func.count(InternshipOffer.id)).where(
-            InternshipOffer.department_id == department_id
-        )
+        select(func.count(InternshipOffer.id)).where(InternshipOffer.department_id == department_id)
     )
     if offer_count:
         raise HTTPException(

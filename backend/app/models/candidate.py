@@ -1,10 +1,11 @@
 """Candidate (student) profile and skill associations."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.config import settings
@@ -38,10 +39,10 @@ class Candidate(Base, TimestampMixin):
         Vector(settings.EMBEDDING_DIM), nullable=True
     )
 
-    skills: Mapped[list["CandidateSkill"]] = relationship(
+    skills: Mapped[list[CandidateSkill]] = relationship(
         back_populates="candidate", cascade="all, delete-orphan"
     )
-    applications: Mapped[list["Application"]] = relationship(
+    applications: Mapped[list[Application]] = relationship(
         back_populates="candidate", cascade="all, delete-orphan"
     )
 
@@ -54,9 +55,7 @@ class CandidateSkill(Base):
     """Association object: a candidate possesses a skill with a given weight."""
 
     __tablename__ = "candidate_skills"
-    __table_args__ = (
-        UniqueConstraint("candidate_id", "skill_id", name="uq_candidate_skill"),
-    )
+    __table_args__ = (UniqueConstraint("candidate_id", "skill_id", name="uq_candidate_skill"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     candidate_id: Mapped[int] = mapped_column(
@@ -68,8 +67,8 @@ class CandidateSkill(Base):
     # Confidence / proficiency in [0, 1], inferred by the NLP pipeline.
     weight: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
 
-    candidate: Mapped["Candidate"] = relationship(back_populates="skills")
-    skill: Mapped["Skill"] = relationship()
+    candidate: Mapped[Candidate] = relationship(back_populates="skills")
+    skill: Mapped[Skill] = relationship()
 
     @property
     def name(self) -> str:

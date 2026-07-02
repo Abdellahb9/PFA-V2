@@ -1,4 +1,5 @@
 """Matching / assignment schemas."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,8 +13,8 @@ from app.models.matching_run import MatchingRunStatus
 class MatchingWeights(BaseModel):
     """Weights for the composite score; should roughly sum to 1.0."""
 
-    semantic: float = 0.5   # embedding cosine similarity
-    skills: float = 0.35    # weighted skill overlap
+    semantic: float = 0.5  # embedding cosine similarity
+    skills: float = 0.35  # weighted skill overlap
     education: float = 0.15  # education-level fit
 
 

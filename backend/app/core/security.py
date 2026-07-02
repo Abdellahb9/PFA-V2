@@ -1,7 +1,8 @@
 """Password hashing and JWT helpers (OAuth2 + JWT)."""
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import bcrypt
@@ -29,10 +30,11 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def _create_token(subject: str, expires_delta: timedelta, token_type: str,
-                  extra: dict[str, Any] | None = None) -> str:
+def _create_token(
+    subject: str, expires_delta: timedelta, token_type: str, extra: dict[str, Any] | None = None
+) -> str:
     """Build and sign a JWT with standard + custom claims."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload: dict[str, Any] = {
         "sub": subject,
         "iat": now,
@@ -66,8 +68,6 @@ def create_refresh_token(subject: str) -> str:
 def decode_token(token: str) -> dict[str, Any] | None:
     """Decode/verify a JWT, returning its claims or None if invalid."""
     try:
-        return jwt.decode(
-            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
-        )
+        return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     except JWTError:
         return None

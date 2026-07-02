@@ -1,4 +1,5 @@
 """Internship offer endpoints (CRUD + required skills + embedding)."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,9 +24,7 @@ router = APIRouter(prefix="/offers", tags=["offers"])
 def _serialize(offer: InternshipOffer) -> OfferOut:
     """Convert an ORM offer into its API representation (with skill refs)."""
     data = OfferOut.model_validate(offer)
-    data.skills = [
-        SkillRef(name=os.skill.name, weight=os.weight) for os in offer.required_skills
-    ]
+    data.skills = [SkillRef(name=os.skill.name, weight=os.weight) for os in offer.required_skills]
     return data
 
 
@@ -49,9 +48,11 @@ def list_offers(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    stmt = select(InternshipOffer).options(
-        selectinload(InternshipOffer.required_skills)
-    ).order_by(InternshipOffer.created_at.desc())
+    stmt = (
+        select(InternshipOffer)
+        .options(selectinload(InternshipOffer.required_skills))
+        .order_by(InternshipOffer.created_at.desc())
+    )
     if department_id:
         stmt = stmt.where(InternshipOffer.department_id == department_id)
     return [_serialize(o) for o in db.scalars(stmt).all()]
@@ -76,8 +77,7 @@ def create_offer(
 
 
 @router.get("/{offer_id}", response_model=OfferOut)
-def get_offer(offer_id: int, db: Session = Depends(get_db),
-              _: User = Depends(get_current_user)):
+def get_offer(offer_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     offer = db.get(InternshipOffer, offer_id)
     if not offer:
         raise HTTPException(status_code=404, detail="Offre introuvable")
@@ -105,8 +105,7 @@ def update_offer(
 
 
 @router.delete("/{offer_id}", status_code=204)
-def delete_offer(offer_id: int, db: Session = Depends(get_db),
-                 _: User = Depends(require_staff)):
+def delete_offer(offer_id: int, db: Session = Depends(get_db), _: User = Depends(require_staff)):
     offer = db.get(InternshipOffer, offer_id)
     if not offer:
         raise HTTPException(status_code=404, detail="Offre introuvable")
@@ -118,8 +117,7 @@ def delete_offer(offer_id: int, db: Session = Depends(get_db),
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Impossible de supprimer : {app_count} candidature(s) liée(s) "
-                "à cette offre."
+                f"Impossible de supprimer : {app_count} candidature(s) liée(s) " "à cette offre."
             ),
         )
     db.delete(offer)

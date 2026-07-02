@@ -1,4 +1,5 @@
 """Skill taxonomy shared by candidates and internship offers."""
+
 from __future__ import annotations
 
 import enum
@@ -10,7 +11,7 @@ from app.core.database import Base
 from app.models.mixins import TimestampMixin
 
 
-class SkillCategory(str, enum.Enum):
+class SkillCategory(enum.StrEnum):
     """High-level grouping used for filtering and weighting."""
 
     TECHNICAL = "technical"
@@ -25,12 +26,9 @@ class Skill(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     # `name` is the human label; `normalized` is lower-cased/deduplicated.
     name: Mapped[str] = mapped_column(String(120), nullable=False)
-    normalized: Mapped[str] = mapped_column(
-        String(120), unique=True, index=True, nullable=False
-    )
+    normalized: Mapped[str] = mapped_column(String(120), unique=True, index=True, nullable=False)
     category: Mapped[SkillCategory] = mapped_column(
-        Enum(SkillCategory, name="skill_category",
-             values_callable=lambda e: [m.value for m in e]),
+        Enum(SkillCategory, name="skill_category", values_callable=lambda e: [m.value for m in e]),
         default=SkillCategory.TECHNICAL,
         nullable=False,
     )
