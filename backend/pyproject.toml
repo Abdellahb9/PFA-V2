@@ -21,5 +21,7 @@ line-length = 100
 target-version = ["py311"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
+# Make the backend root importable (`import app...`) regardless of how/where
+# pytest is invoked (CI runs it from backend/ without installing the package).
+pythonpath = ["."]
