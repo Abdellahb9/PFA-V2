@@ -26,8 +26,22 @@ from app.services.nlp.pipeline import build_offer_text
 logger = logging.getLogger(__name__)
 
 
+# Well-known dev default (documented in .env.example); never allowed in production.
+_DEFAULT_ADMIN_PASSWORD = "Admin@1234"
+
+
 def _seed_admin(db: Session) -> None:
     if db.scalar(select(User).where(User.email == settings.FIRST_ADMIN_EMAIL)):
+        return
+    if settings.ENVIRONMENT == "production" and (
+        settings.FIRST_ADMIN_PASSWORD == _DEFAULT_ADMIN_PASSWORD
+    ):
+        logger.critical(
+            "Refusing to seed admin user %s: FIRST_ADMIN_PASSWORD is still the "
+            "default value while ENVIRONMENT=production. Set a strong "
+            "FIRST_ADMIN_PASSWORD and restart to create the admin account.",
+            settings.FIRST_ADMIN_EMAIL,
+        )
         return
     db.add(
         User(
