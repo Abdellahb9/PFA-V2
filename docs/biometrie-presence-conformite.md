@@ -57,6 +57,11 @@ toujours disponible.
 - **Éclairé** : notice d'information (responsable de traitement, finalité, base
   légale, destinataires, durée, droits, contact DPO, droit de réclamation CNDP).
 - **Libre** : opt-in ; le repli QR/badge est proposé au même niveau de service.
+  ⚠️ **Déséquilibre employeur/stagiaire** : dans une relation employeur–stagiaire,
+  le consentement peut ne pas être considéré comme « libre » (déséquilibre de
+  pouvoir). Conséquence directe : le pointage biométrique **ne peut pas être
+  imposé** ; le repli non biométrique doit être proposé **sans aucun
+  désavantage** pour qui le choisit.
 - **Révocable à tout moment** : la révocation déclenche la **suppression** du
   gabarit et bascule le stagiaire sur le repli, sans conséquence.
 - **Traçabilité du consentement** : date, version de la notice, canal, preuve
