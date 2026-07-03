@@ -108,6 +108,10 @@ Au démarrage, le backend applique les migrations Alembic puis **amorce la base*
 **Identifiants admin par défaut** (modifiables dans `.env`) :
 `admin@phosboucraa.ma` / `Admin@1234`
 
+> 🔐 En production (`ENVIRONMENT=production`), le seeder **refuse** de créer le
+> compte admin tant que `FIRST_ADMIN_PASSWORD` vaut encore la valeur par défaut —
+> définissez un mot de passe fort avant le premier déploiement.
+
 ---
 
 ## 🗄️ Base de données — local ou Supabase
@@ -247,10 +251,20 @@ la limite de taille des rewrites Netlify.
 ## 🧪 Tests & qualité
 
 ```bash
-cd backend && pytest            # tests du moteur de scoring/Hongrois
+cd backend && pytest            # unités (scoring/Hongrois, forecast, RAG) +
+                                #   intégration API (httpx + SQLite éphémère)
 ruff check . && black .         # lint + format Python
+cd frontend && npm test         # tests UI (Vitest + Testing Library, jsdom)
 cd frontend && npm run build    # tsc (strict) + build Vite
 ```
+
+- **Intégration API** : `backend/tests/test_api_integration.py` appelle la vraie
+  app FastAPI en HTTP (TestClient httpx) sur une **base SQLite en mémoire**
+  (aucun Postgres requis) — auth JWT, RBAC, CRUD départements (409 d'intégrité),
+  offres publiques.
+- **Parité de scoring** : `shared/fixtures/scoring-parity.json` est consommé par
+  pytest **et** vitest pour garantir que les moteurs Python et TypeScript
+  produisent les mêmes composantes de score.
 
 ---
 

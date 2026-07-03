@@ -1,0 +1,55 @@
+{
+  "$comment": "Golden test vectors shared by backend/tests/test_scoring_parity.py and netlify/functions/_shared/scoring-parity.test.ts. Both matching engines (Python: app/services/matching/scoring.py, TS: netlify/functions/_shared/scoring.ts) MUST produce these exact component values. The serverless engine has no semantic component, so composite cases are checked in Python with w_semantic=0. If you change a scoring rule, change it in BOTH implementations and update these fixtures in the same commit.",
+  "educationFit": [
+    { "name": "no requirement is full fit", "candidate": "Bac+5", "required": null, "expected": 1.0 },
+    { "name": "unknown candidate level is neutral", "candidate": null, "required": "Bac+3", "expected": 0.5 },
+    { "name": "unrecognized candidate label is neutral", "candidate": "diplome", "required": "Bac+3", "expected": 0.5 },
+    { "name": "over-qualified is full fit", "candidate": "Bac+5", "required": "Bac+3", "expected": 1.0 },
+    { "name": "two levels short decays to 0.2", "candidate": "Bac+3", "required": "Bac+5", "expected": 0.2 },
+    { "name": "licence vs master (aliases rank equally)", "candidate": "Licence", "required": "Master", "expected": 0.2 },
+    { "name": "dut equals bac+2", "candidate": "DUT", "required": "bac+2", "expected": 1.0 },
+    { "name": "ingenieur equals master 2", "candidate": "ingenieur", "required": "master 2", "expected": 1.0 },
+    { "name": "far below floors at 0", "candidate": "bac", "required": "PhD", "expected": 0.0 }
+  ],
+  "skillOverlap": [
+    { "name": "empty offer scores 0", "candidate": { "python": 1.0 }, "offer": {}, "expected": 0.0 },
+    { "name": "full coverage", "candidate": { "python": 1.0, "nlp": 1.0 }, "offer": { "python": 1.0, "nlp": 1.0 }, "expected": 1.0 },
+    { "name": "half coverage", "candidate": { "python": 1.0 }, "offer": { "python": 1.0, "sql": 1.0 }, "expected": 0.5 },
+    { "name": "proficiency modulates importance", "candidate": { "python": 0.5 }, "offer": { "python": 1.0, "sql": 1.0 }, "expected": 0.25 },
+    { "name": "proficiency is clamped at 1", "candidate": { "python": 2.0 }, "offer": { "python": 0.8, "nlp": 0.2 }, "expected": 0.8 },
+    { "name": "no overlap scores 0", "candidate": { "java": 1.0 }, "offer": { "python": 1.0 }, "expected": 0.0 },
+    { "name": "weighted partial coverage", "candidate": { "python": 0.6, "sql": 1.0 }, "offer": { "python": 1.0, "sql": 0.5 }, "expected": 0.7333 }
+  ],
+  "composite": [
+    {
+      "name": "blend of partial skills and short education",
+      "candidateSkills": { "python": 0.5 },
+      "candidateLevel": "Bac+3",
+      "offerSkills": { "python": 1.0, "sql": 1.0 },
+      "minLevel": "Bac+5",
+      "wSkills": 0.7,
+      "wEducation": 0.3,
+      "expected": 0.235
+    },
+    {
+      "name": "perfect candidate scores 1",
+      "candidateSkills": { "python": 1.0, "nlp": 1.0 },
+      "candidateLevel": "Bac+5",
+      "offerSkills": { "python": 1.0, "nlp": 1.0 },
+      "minLevel": "Bac+3",
+      "wSkills": 0.7,
+      "wEducation": 0.3,
+      "expected": 1.0
+    },
+    {
+      "name": "clamped proficiency with unknown education",
+      "candidateSkills": { "python": 2.0 },
+      "candidateLevel": null,
+      "offerSkills": { "python": 0.8, "nlp": 0.2 },
+      "minLevel": "Bac+3",
+      "wSkills": 0.7,
+      "wEducation": 0.3,
+      "expected": 0.71
+    }
+  ]
+}

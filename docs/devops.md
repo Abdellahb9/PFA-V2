@@ -7,9 +7,9 @@ Trois jobs (échec ⇒ merge bloqué) :
 
 | Job | Ce qu'il fait |
 |---|---|
-| **backend** | `ruff check .` · `black --check .` · `pytest -q` (Python 3.11) |
-| **frontend** | `npm ci` · `npm run build` (exécute `tsc -b` puis `vite build`) |
-| **functions** | `npm ci` · `tsc --noEmit` · `vitest run` (tests serverless) |
+| **backend** | `ruff check .` · `black --check .` · `pytest -q` (unités + intégration API sur SQLite en mémoire, Python 3.11) |
+| **frontend** | `npm ci` · `vitest run` (Testing Library, jsdom) · `npm run build` (exécute `tsc -b` puis `vite build`) |
+| **functions** | `npm ci` · `tsc --noEmit` · `vitest run` (tests serverless, dont parité de scoring avec le backend) |
 
 > ⚠️ **Avant le premier passage** : le repo n'a peut-être jamais été formaté par
 > `black`/`ruff`. Lance une fois `cd backend && black . && ruff check --fix .`,
