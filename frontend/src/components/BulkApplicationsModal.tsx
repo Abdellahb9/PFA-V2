@@ -9,6 +9,11 @@ import { apiErrorMessage } from "@/api/client";
 
 const MAX_FILES = 20;
 
+// Sentinel for the explicit "all offers" choice: stored as a general
+// application (offer_id null), which the rankings/matching evaluate against
+// every open offer.
+const ALL_OFFERS = 0;
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -39,7 +44,8 @@ export default function BulkApplicationsModal({ open, onClose }: Props) {
     try {
       const result = await bulkSubmit.mutateAsync({
         files,
-        offerId: offerId ?? null,
+        // ALL_OFFERS (0) and "no choice" both mean a general application.
+        offerId: offerId || null,
         onProgress: (done, total) => setProgress({ done, total }),
       });
       message.success(
@@ -113,7 +119,13 @@ export default function BulkApplicationsModal({ open, onClose }: Props) {
           style={{ width: "100%" }}
           value={offerId}
           onChange={setOfferId}
-          options={offers?.map((o) => ({ value: o.id, label: o.title }))}
+          options={[
+            {
+              value: ALL_OFFERS,
+              label: "🌐 Toutes les offres (candidature générale)",
+            },
+            ...(offers?.map((o) => ({ value: o.id, label: o.title })) ?? []),
+          ]}
         />
         {progress && bulkSubmit.isPending && (
           <Progress

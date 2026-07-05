@@ -135,7 +135,12 @@ export default function NewApplicationModal({ open, onClose }: Props) {
           <Select
             allowClear
             placeholder="Candidature générale si non précisé"
-            options={offers?.map((o) => ({ value: o.id, label: o.title }))}
+            options={[
+              // Falsy sentinel: submit drops it, producing a general application
+              // (evaluated against every open offer by rankings/matching).
+              { value: 0, label: "🌐 Toutes les offres (candidature générale)" },
+              ...(offers?.map((o) => ({ value: o.id, label: o.title })) ?? []),
+            ]}
           />
         </Form.Item>
         <Form.Item name="motivation" label="Motivation (optionnel)">
