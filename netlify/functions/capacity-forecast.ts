@@ -54,10 +54,10 @@ export default async (req: Request): Promise<Response> => {
 
   const [{ data: departments }, { data: openOffers }, { data: apps }] = await Promise.all([
     sb.from("departments").select("id, name, capacity"),
-    sb.from("offers").select("department_id, slots").eq("status", "open"),
+    sb.from("internship_offers").select("department_id, slots").eq("status", "open"),
     sb
       .from("applications")
-      .select("created_at, offer:offers(department_id)")
+      .select("created_at, offer:internship_offers(department_id)")
       .gte("created_at", since.toISOString()),
   ]);
 

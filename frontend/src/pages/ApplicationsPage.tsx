@@ -29,8 +29,8 @@ export default function ApplicationsPage() {
   const onView = async (applicationId: number) => {
     try {
       await openDocument(applicationId);
-    } catch {
-      message.error("Impossible d'ouvrir le document");
+    } catch (err) {
+      message.error(apiErrorMessage(err, "Impossible d'ouvrir le document"));
     }
   };
 

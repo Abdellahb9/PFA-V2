@@ -5,6 +5,7 @@ import type { Context } from "@netlify/functions";
 import { admin, BUCKET } from "./_shared/supabase";
 import { requireStaff } from "./_shared/auth";
 import { json, fail, noContent, readBody } from "./_shared/http";
+import { triggerAnalysis } from "./_shared/trigger-analysis";
 
 export const config = {
   path: ["/api/applications", "/api/applications/:id", "/api/applications/:id/:action"],
@@ -63,14 +64,17 @@ export default async (req: Request, context: Context): Promise<Response> => {
     return error ? fail(error.message, 500) : json((data ?? []).map(serialize));
   }
 
-  // GET signed CV url
+  // GET signed CV url (latest CV — resubmissions may leave several rows)
   if (req.method === "GET" && id && action === "cv-url") {
-    const { data: doc } = await sb
+    const { data: docs, error: docErr } = await sb
       .from("documents")
       .select("storage_path, filename")
       .eq("application_id", id)
       .eq("kind", "cv")
-      .maybeSingle();
+      .order("id", { ascending: false })
+      .limit(1);
+    if (docErr) return fail(docErr.message, 500);
+    const doc = docs?.[0];
     if (!doc) return fail("CV introuvable", 404);
     const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(doc.storage_path, 3600);
     return error ? fail(error.message, 500) : json({ url: data.signedUrl, filename: doc.filename });
@@ -89,14 +93,10 @@ export default async (req: Request, context: Context): Promise<Response> => {
     return data ? json(serialize(data)) : fail("Candidature introuvable", 404);
   }
 
-  // POST reanalyze
+  // POST reanalyze (host-aware trigger — /.netlify/functions/* has no Vercel
+  // equivalent, so the shared helper routes through /api there).
   if (req.method === "POST" && id && action === "reanalyze") {
-    const origin = new URL(req.url).origin;
-    fetch(`${origin}/.netlify/functions/analyze-application-background`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ application_id: id }),
-    }).catch(() => {});
+    triggerAnalysis(id, req);
     return json({ id, status: "parsing" });
   }
 

@@ -65,7 +65,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
     // Include the candidate's applications (the CRM "relationship" timeline).
     const { data: apps } = await sb
       .from("applications")
-      .select("id, status, match_score, created_at, offer:offers(title)")
+      .select("id, status, match_score, created_at, offer:internship_offers(title)")
       .eq("candidate_id", id)
       .order("created_at", { ascending: false });
     const applications = (apps ?? []).map((a: any) => ({

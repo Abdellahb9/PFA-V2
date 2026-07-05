@@ -5,6 +5,7 @@ import { z } from "zod";
 import { admin, BUCKET } from "./_shared/supabase";
 import { getOptionalUser } from "./_shared/auth";
 import { json, fail } from "./_shared/http";
+import { triggerAnalysis } from "./_shared/trigger-analysis";
 
 const schema = z.object({
   first_name: z.string().min(1).max(120),
@@ -25,28 +26,6 @@ const schema = z.object({
 });
 
 export const config = { path: "/api/submit-application" };
-
-function triggerAnalysis(applicationId: number, req: Request) {
-  const origin = new URL(req.url).origin;
-  const onVercel = Boolean(process.env.VERCEL);
-  // Netlify uses background functions; Vercel routes everything through /api.
-  const url = onVercel
-    ? `${origin}/api/analyze-application-background`
-    : `${origin}/.netlify/functions/analyze-application-background`;
-  const promise = fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ application_id: applicationId }),
-  }).catch(() => {});
-  // On Vercel, keep the invocation alive until the trigger is dispatched.
-  // Variable specifier so esbuild doesn't try to bundle the dep on Netlify.
-  if (onVercel) {
-    const mod = "@vercel/functions";
-    import(mod)
-      .then((m: { waitUntil?: (p: Promise<unknown>) => void }) => m.waitUntil?.(promise))
-      .catch(() => {});
-  }
-}
 
 export default async (req: Request): Promise<Response> => {
   if (req.method !== "POST") return fail("Méthode non autorisée", 405);
