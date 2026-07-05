@@ -1,7 +1,7 @@
 // React Query hooks wrapping the serverless API (Netlify Functions).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
-import { submitApplicationViaStorage } from "./upload";
+import { submitApplicationViaStorage, submitApplicationsBulkViaStorage } from "./upload";
 import type {
   AdminUser,
   Application,
@@ -209,6 +209,27 @@ export const useSubmitApplication = () => {
   return useMutation({
     mutationFn: ({ fields, file }: { fields: Record<string, unknown>; file: File }) =>
       submitApplicationViaStorage(fields, file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["applications"] });
+      qc.invalidateQueries({ queryKey: ["candidates"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+};
+
+// Bulk CV import: one application per file, identity filled by the CV analysis.
+export const useBulkSubmitApplications = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      files,
+      offerId,
+      onProgress,
+    }: {
+      files: File[];
+      offerId?: number | null;
+      onProgress?: (done: number, total: number) => void;
+    }) => submitApplicationsBulkViaStorage(files, offerId, onProgress),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["applications"] });
       qc.invalidateQueries({ queryKey: ["candidates"] });

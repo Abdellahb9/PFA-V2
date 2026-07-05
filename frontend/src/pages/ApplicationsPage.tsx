@@ -2,11 +2,18 @@
 // extracted skills, and matching score.
 import { useState } from "react";
 import { Card, Tag, Select, Progress, Button, Space, Popconfirm, message } from "antd";
-import { PlusOutlined, FilePdfOutlined, ReloadOutlined, DeleteOutlined } from "@ant-design/icons";
+import {
+  PlusOutlined,
+  FilePdfOutlined,
+  ReloadOutlined,
+  DeleteOutlined,
+  CloudUploadOutlined,
+} from "@ant-design/icons";
 import { useApplications, useDeleteApplication, openDocument } from "@/api/hooks";
 import { apiErrorMessage } from "@/api/client";
 import SkeletonTable from "@/components/SkeletonTable";
 import NewApplicationModal from "@/components/NewApplicationModal";
+import BulkApplicationsModal from "@/components/BulkApplicationsModal";
 import type { Application, ApplicationStatus, SkillRef } from "@/api/types";
 
 // French labels + colors for each application status.
@@ -23,6 +30,7 @@ const STATUS_META: Record<ApplicationStatus, { label: string; color: string }> =
 export default function ApplicationsPage() {
   const [status, setStatus] = useState<string | undefined>();
   const [modalOpen, setModalOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const { data, isLoading, isFetching } = useApplications(status);
   const deleteApp = useDeleteApplication();
 
@@ -140,6 +148,9 @@ export default function ApplicationsPage() {
               label: m.label,
             }))}
           />
+          <Button icon={<CloudUploadOutlined />} onClick={() => setBulkOpen(true)}>
+            Importer des CV
+          </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
             Nouvelle candidature
           </Button>
@@ -156,6 +167,7 @@ export default function ApplicationsPage() {
       />
 
       <NewApplicationModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <BulkApplicationsModal open={bulkOpen} onClose={() => setBulkOpen(false)} />
     </Card>
   );
 }

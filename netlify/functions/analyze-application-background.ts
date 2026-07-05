@@ -49,7 +49,7 @@ export default async (req: Request): Promise<Response> => {
       .eq("id", application_id)
       .single();
     if (!app) return ok();
-    const candidateId = app.candidate_id as number;
+    let candidateId = app.candidate_id as number;
 
     const { data: docs } = await sb
       .from("documents")
@@ -72,6 +72,54 @@ export default async (req: Request): Promise<Response> => {
     const llm = await extractProfileCached(fullText);
     const hints = regexHints(fullText);
     const skillsRaw = llm?.skills?.length ? llm.skills : extractSkills(fullText);
+
+    // Bulk-imported applications carry a provisional identity (placeholder
+    // @cv-import.local email, name guessed from the filename): replace it with
+    // what the CV actually contains before persisting the parsed fields.
+    const { data: candRow } = await sb
+      .from("candidates")
+      .select("email")
+      .eq("id", candidateId)
+      .single();
+    if (candRow?.email?.endsWith("@cv-import.local")) {
+      const email = llm?.email ?? hints.email;
+      if (email) {
+        // Same rule as submit-application: reuse the candidate matching this
+        // email instead of creating a duplicate profile.
+        const { data: existing } = await sb
+          .from("candidates")
+          .select("id")
+          .eq("email", email)
+          .neq("id", candidateId)
+          .maybeSingle();
+        if (existing) {
+          await sb
+            .from("applications")
+            .update({ candidate_id: existing.id })
+            .eq("id", application_id);
+          await sb.from("candidate_skills").delete().eq("candidate_id", candidateId);
+          await sb.from("candidates").delete().eq("id", candidateId);
+          candidateId = existing.id;
+        } else {
+          await sb
+            .from("candidates")
+            .update({
+              email,
+              first_name: llm?.first_name ?? undefined,
+              last_name: llm?.last_name ?? undefined,
+            })
+            .eq("id", candidateId);
+        }
+      } else if (llm?.first_name || llm?.last_name) {
+        await sb
+          .from("candidates")
+          .update({
+            first_name: llm?.first_name ?? undefined,
+            last_name: llm?.last_name ?? undefined,
+          })
+          .eq("id", candidateId);
+      }
+    }
 
     await sb
       .from("candidates")

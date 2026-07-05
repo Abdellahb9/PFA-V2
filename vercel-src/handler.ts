@@ -13,6 +13,7 @@ import matchingRuns from "../netlify/functions/matching-runs";
 import dashboard from "../netlify/functions/dashboard";
 import publicOffers from "../netlify/functions/public-offers";
 import submitApplication from "../netlify/functions/submit-application";
+import submitApplicationBulk from "../netlify/functions/submit-application-bulk";
 import myApplications from "../netlify/functions/my-applications";
 import offerRankings from "../netlify/functions/offer-rankings";
 import capacityForecast from "../netlify/functions/capacity-forecast";
@@ -59,6 +60,7 @@ const routes: Route[] = [
   { re: /^\/api\/matching-run\/?$/, fn: matchingRun },
   { re: /^\/api\/dashboard\/?$/, fn: dashboard },
   { re: /^\/api\/public-offers\/?$/, fn: publicOffers },
+  { re: /^\/api\/submit-application-bulk\/?$/, fn: submitApplicationBulk },
   { re: /^\/api\/submit-application\/?$/, fn: submitApplication },
   { re: /^\/api\/my-applications\/?$/, fn: myApplications },
   { re: /^\/api\/create-upload-url\/?$/, fn: createUploadUrl },
