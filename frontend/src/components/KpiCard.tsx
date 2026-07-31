@@ -46,7 +46,18 @@ export default function KpiCard({
   const sparkId = `kpi-spark-${title.replace(/\W/g, "")}`;
 
   return (
-    <Card styles={{ body: { padding: 20 } }}>
+    <Card
+      style={{ height: "100%" }}
+      styles={{
+        body: {
+          padding: 20,
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+        },
+      }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <Typography.Text

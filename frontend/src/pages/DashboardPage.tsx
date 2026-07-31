@@ -18,7 +18,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   CartesianGrid,
   ResponsiveContainer,
 } from "recharts";
@@ -143,45 +142,74 @@ export default function DashboardPage() {
             subtitle="Répartition actuelle"
             empty={!data.applications_by_status.length}
           >
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={data.applications_by_status}
-                  dataKey="value"
-                  nameKey="label"
-                  cx="50%"
-                  cy="46%"
-                  innerRadius={62}
-                  outerRadius={92}
-                  paddingAngle={2}
-                  stroke={chart.surface}
-                  strokeWidth={2}
-                  isAnimationActive={chart.animate}
-                >
-                  {data.applications_by_status.map((_, i) => (
-                    <Cell key={i} fill={chart.palette[i % chart.palette.length]} />
-                  ))}
-                </Pie>
-                <text
-                  x="50%"
-                  y="44%"
-                  textAnchor="middle"
-                  style={{ fontSize: 26, fontWeight: 700, fill: token.colorText }}
-                >
-                  {totalStatus.toLocaleString("fr-FR")}
-                </text>
-                <text
-                  x="50%"
-                  y="52%"
-                  textAnchor="middle"
-                  style={{ fontSize: 12, fill: token.colorTextSecondary }}
-                >
-                  candidatures
-                </text>
-                <Tooltip content={<ChartTooltip chart={chart} />} />
-                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
+            <div style={{ display: "flex", alignItems: "center", height: "100%", gap: 8 }}>
+              <div style={{ flex: "1 1 0", minWidth: 0, height: "100%" }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={data.applications_by_status}
+                      dataKey="value"
+                      nameKey="label"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={68}
+                      outerRadius={98}
+                      stroke={chart.surface}
+                      strokeWidth={2}
+                      isAnimationActive={chart.animate}
+                    >
+                      {data.applications_by_status.map((_, i) => (
+                        <Cell key={i} fill={chart.palette[i % chart.palette.length]} />
+                      ))}
+                    </Pie>
+                    <text
+                      x="50%"
+                      y="48%"
+                      textAnchor="middle"
+                      style={{ fontSize: 28, fontWeight: 700, fill: token.colorText }}
+                    >
+                      {totalStatus.toLocaleString("fr-FR")}
+                    </text>
+                    <text
+                      x="50%"
+                      y="57%"
+                      textAnchor="middle"
+                      style={{ fontSize: 12, fill: token.colorTextSecondary }}
+                    >
+                      candidatures
+                    </text>
+                    <Tooltip content={<ChartTooltip chart={chart} />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              {/* Custom legend: neutral text + count and share per status. */}
+              <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 10, paddingRight: 8 }}>
+                {data.applications_by_status.map((s, i) => {
+                  const pct = totalStatus ? Math.round((s.value / totalStatus) * 100) : 0;
+                  return (
+                    <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                      <span
+                        aria-hidden
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: chart.palette[i % chart.palette.length],
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ color: token.colorText, minWidth: 76 }}>{s.label}</span>
+                      <span
+                        className="tabular-nums"
+                        style={{ color: token.colorTextSecondary, marginLeft: "auto", paddingLeft: 12 }}
+                      >
+                        {s.value} · {pct} %
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </ChartCard>
         </Col>
         <Col xs={24} lg={12}>
@@ -227,26 +255,35 @@ export default function DashboardPage() {
             empty={!data.candidates_by_field.length}
           >
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.candidates_by_field} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
-                <CartesianGrid {...chart.gridProps} />
-                <XAxis
+              <BarChart
+                data={data.candidates_by_field}
+                layout="vertical"
+                margin={{ top: 4, right: 36, bottom: 0, left: 8 }}
+              >
+                <XAxis type="number" hide />
+                <YAxis
+                  type="category"
                   dataKey="label"
-                  tick={{ ...chart.axisTick, fontSize: 11 }}
+                  width={130}
                   interval={0}
-                  angle={-15}
-                  height={50}
+                  tick={{ ...chart.axisTick, fontSize: 12 }}
                   {...chart.axisProps}
                 />
-                <YAxis allowDecimals={false} tick={chart.axisTick} {...chart.axisProps} />
                 <Tooltip content={<ChartTooltip chart={chart} />} cursor={{ fill: chart.cursorFill }} />
                 <Bar
                   dataKey="value"
                   name="Candidats"
                   fill={chart.palette[0]}
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={24}
+                  radius={[0, 4, 4, 0]}
+                  maxBarSize={18}
                   isAnimationActive={chart.animate}
-                />
+                >
+                  <LabelList
+                    dataKey="value"
+                    position="right"
+                    style={{ fill: chart.axisTick.fill, fontSize: 12, fontVariantNumeric: "tabular-nums" }}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -267,8 +304,9 @@ export default function DashboardPage() {
                 <YAxis
                   type="category"
                   dataKey="label"
-                  width={120}
-                  tick={{ ...chart.axisTick, fontSize: 11 }}
+                  width={130}
+                  interval={0}
+                  tick={{ ...chart.axisTick, fontSize: 12 }}
                   {...chart.axisProps}
                 />
                 <Tooltip content={<ChartTooltip chart={chart} />} cursor={{ fill: chart.cursorFill }} />

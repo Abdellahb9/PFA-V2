@@ -1,5 +1,5 @@
 // Routing: public landing + login, protected admin area (Supabase Auth).
-import { lazy, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import AppLayout from "@/components/Layout";
@@ -24,6 +24,10 @@ const ApplicationsPage = lazy(() => import("@/pages/ApplicationsPage"));
 const MatchingPage = lazy(() => import("@/pages/MatchingPage"));
 const UsersPage = lazy(() => import("@/pages/UsersPage"));
 const AssistantPage = lazy(() => import("@/pages/AssistantPage"));
+// Dev-only visual preview of the dashboard (mock data, no auth).
+const DevPreviewDashboard = import.meta.env.DEV
+  ? lazy(() => import("@/pages/DevPreviewDashboard"))
+  : null;
 
 // Detect a persisted Supabase session synchronously to avoid a splash flash
 // for logged-out visitors (the token lives under an `sb-*-auth-token` key).
@@ -86,6 +90,16 @@ export default function App() {
           <Route path="/assistant" element={<AssistantPage />} />
           <Route path="/utilisateurs" element={<UsersPage />} />
         </Route>
+        {DevPreviewDashboard && (
+          <Route
+            path="/__preview/dashboard"
+            element={
+              <Suspense fallback={null}>
+                <DevPreviewDashboard />
+              </Suspense>
+            }
+          />
+        )}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>
