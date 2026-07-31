@@ -6,6 +6,11 @@ import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "antd/dist/reset.css";
 import "dayjs/locale/fr";
+// Self-hosted variable fonts (no CDN request, no layout shift from a third
+// party). Each file is unicode-range subsetted, so a French page only ever
+// downloads the latin cut. Inter carries the UI; Space Grotesk the headings.
+import "@fontsource-variable/inter/wght.css";
+import "@fontsource-variable/space-grotesk/wght.css";
 
 import App from "./App";
 import { store } from "./store";

@@ -8,7 +8,8 @@ const shared = {
   colorLink: BRAND,
   colorLinkHover: BRAND_HOVER,
   borderRadius: 8,
-  fontFamily: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
+  // The real stack lives in index.css so CSS and AntD can't drift apart.
+  fontFamily: "var(--font-ui)",
 };
 
 export const darkTheme: ThemeConfig = {

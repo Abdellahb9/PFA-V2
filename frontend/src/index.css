@@ -1,4 +1,11 @@
 :root {
+  /* Type system: one text face for dense UI (tables, forms, labels), one
+     display face for headings and headline figures. Both are loaded in
+     main.tsx; the system stack stays as the fallback while they load. */
+  --font-ui: "Inter Variable", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "Space Grotesk Variable", var(--font-ui);
+
   --nv-green: #76b900; /* NVIDIA brand green */
   --nv-green-hover: #8fd400;
   --nv-bg: #0a0a0a;
@@ -16,8 +23,28 @@ body,
 #root {
   margin: 0;
   height: 100%;
-  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
+}
+
+/* Headings and headline figures take the display face; body copy, tables and
+   form controls stay on the text face where legibility at 12–14px matters. */
+h1,
+h2,
+h3,
+h4,
+h5,
+/* AntD types headings as `.ant-typography` (0,1,0), so the bare tag selectors
+   above lose to it — qualify them to take the cascade back. */
+h1.ant-typography,
+h2.ant-typography,
+h3.ant-typography,
+h4.ant-typography,
+h5.ant-typography,
+.ant-card-head .ant-card-head-title,
+.kpi-value,
+.ant-statistic-content {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
 }
 
 /* The page base colour lives on <html> only — it is painted BEHIND the fixed
