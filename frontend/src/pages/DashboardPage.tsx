@@ -154,7 +154,7 @@ export default function DashboardPage() {
                       cy="50%"
                       innerRadius={68}
                       outerRadius={98}
-                      stroke={chart.surface}
+                      stroke={chart.surfaceSolid}
                       strokeWidth={2}
                       isAnimationActive={chart.animate}
                     >
@@ -237,7 +237,7 @@ export default function DashboardPage() {
                   stroke={chart.palette[0]}
                   strokeWidth={2.5}
                   fill="url(#dash-monthly)"
-                  activeDot={{ r: 5, strokeWidth: 2, stroke: chart.surface }}
+                  activeDot={{ r: 5, strokeWidth: 2, stroke: chart.surfaceSolid }}
                   isAnimationActive={chart.animate}
                 />
               </AreaChart>
@@ -338,6 +338,8 @@ export default function DashboardPage() {
           columns={deptColumns}
           pagination={false}
           size="small"
+          // Scroll inside the card on narrow viewports instead of widening the page.
+          scroll={{ x: "max-content" }}
         />
       </Card>
 

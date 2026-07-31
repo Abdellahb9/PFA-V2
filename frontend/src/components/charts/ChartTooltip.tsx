@@ -24,11 +24,15 @@ export default function ChartTooltip({ chart, active, label, payload, formatter 
   return (
     <div
       style={{
-        background: chart.tooltip.bg,
+        // Glass vars come from index.css (see the liquid-glass block); the
+        // solid token stays as the fallback where backdrop-filter is missing.
+        background: `var(--glass-elevated, ${chart.tooltip.bg})`,
+        backdropFilter: "blur(18px) saturate(160%)",
+        WebkitBackdropFilter: "blur(18px) saturate(160%)",
         border: `1px solid ${chart.tooltip.border}`,
         borderRadius: 8,
         padding: "8px 12px",
-        boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+        boxShadow: "var(--glass-shadow, 0 4px 16px rgba(0,0,0,0.12))",
         fontSize: 12,
         lineHeight: 1.7,
         minWidth: 120,

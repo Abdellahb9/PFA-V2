@@ -7,6 +7,11 @@ import type { ThemeMode } from "./ThemeProvider";
 export const BRAND = "#76B900"; // NVIDIA green
 export const BRAND_HOVER = "#8FD400";
 
+// Glass surfaces (--glass-surface / --glass-elevated / --glass-solid …) live in
+// index.css, not here: backdrop-filter can't be expressed as an AntD token, and
+// keeping one copy avoids the CSS and TS values drifting apart. Read them from
+// TS with var(--glass-*) — see components/charts/ChartTooltip.tsx.
+
 // One value per semantic role and mode (UI accents: progress bars, icons, tags).
 export const semanticColors = {
   light: {

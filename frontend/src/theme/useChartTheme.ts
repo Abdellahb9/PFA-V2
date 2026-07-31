@@ -33,7 +33,10 @@ export default function useChartTheme() {
         text: token.colorText,
         textSecondary: token.colorTextSecondary,
       },
-      surface: surfaces.surface,
+      // SVG strokes (donut slice gaps, activeDot rims) can't be blurred, and a
+      // translucent stroke over a chart reads as dirt — keep them solid even
+      // though the surrounding card is glass.
+      surfaceSolid: surfaces.surface,
     };
   }, [mode, token.colorText, token.colorTextSecondary]);
 }

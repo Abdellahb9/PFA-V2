@@ -33,10 +33,95 @@ body,
   background: transparent;
 }
 
+/* ---- Liquid glass -------------------------------------------------------
+   Shell surfaces are translucent so the constellation BackgroundLayer shows
+   through. backdrop-filter cannot be expressed as an AntD token, so the glass
+   lives here and keys on the data-theme attribute set by ThemeProvider.
+   Alphas are tuned to keep body text at/above 4.5:1 over the background. */
+html[data-theme="light"] {
+  --glass-surface: rgba(255, 255, 255, 0.72);
+  --glass-elevated: rgba(255, 255, 255, 0.84);
+  --glass-solid: rgba(255, 255, 255, 0.94);
+  --glass-border: rgba(255, 255, 255, 0.65);
+  --glass-highlight: rgba(255, 255, 255, 0.7);
+  --glass-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+html[data-theme="dark"] {
+  --glass-surface: rgba(22, 22, 22, 0.62);
+  --glass-elevated: rgba(28, 28, 28, 0.74);
+  --glass-solid: rgba(24, 24, 24, 0.94);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.06);
+  --glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+:root {
+  --glass-blur: blur(18px) saturate(160%);
+}
+
+/* Shell surfaces only — never table rows or per-datum elements, so a view
+   stays under ~10 blur layers. !important overrides AntD's inline-ish
+   component background tokens without forking every component token. */
+.ant-card,
+.ant-layout-sider,
+.ant-layout-header {
+  background: var(--glass-surface) !important;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+}
+
+/* The sider/header sit flush against the content: keep only the seam border. */
+.ant-layout-sider {
+  border-width: 0 1px 0 0;
+}
+.ant-layout-header {
+  border-width: 0 0 1px 0;
+}
+
+/* Floating layers need more opacity than in-page surfaces. */
+.ant-modal-content,
+.ant-drawer .ant-drawer-content {
+  background: var(--glass-elevated) !important;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+}
+.ant-modal-header {
+  background: transparent !important;
+}
+
+/* Menus stay near-solid: readability beats effect on dense text targets. */
+.ant-dropdown-menu,
+.ant-popover-inner,
+.ant-select-dropdown,
+.ant-message-notice-content {
+  background: var(--glass-solid) !important;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+/* Without backdrop-filter the translucency would just look washed out, so
+   fall back to the original solid surfaces. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html[data-theme="light"] {
+    --glass-surface: #ffffff;
+    --glass-elevated: #ffffff;
+    --glass-solid: #ffffff;
+  }
+  html[data-theme="dark"] {
+    --glass-surface: #161616;
+    --glass-elevated: #1f1f1f;
+    --glass-solid: #1f1f1f;
+  }
+}
+
 .login-card {
   width: 380px;
   max-width: 92vw;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 .kpi-value {

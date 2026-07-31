@@ -22,9 +22,12 @@ export default function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Keep the page base colour in sync. It lives on <html> (painted behind the
   // fixed BackgroundLayer) so the constellation stays visible; setting it on
-  // body/#root would paint over the layer and hide it.
+  // body/#root would paint over the layer and hide it. The data-theme attribute
+  // lets plain CSS pick the right glass variables (backdrop-filter can't be
+  // expressed as an AntD token).
   useEffect(() => {
     document.documentElement.style.background = modeVisuals[mode].base;
+    document.documentElement.dataset.theme = mode;
   }, [mode]);
 
   const value = useMemo<ThemeCtx>(

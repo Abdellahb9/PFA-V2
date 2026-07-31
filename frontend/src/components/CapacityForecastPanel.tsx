@@ -78,6 +78,8 @@ export default function CapacityForecastPanel() {
           columns={columns}
           pagination={false}
           size="small"
+          // Scroll inside the card on narrow viewports instead of widening the page.
+          scroll={{ x: "max-content" }}
         />
       )}
     </Card>
