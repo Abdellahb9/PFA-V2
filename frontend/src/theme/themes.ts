@@ -1,12 +1,12 @@
 // The two NVIDIA "Build" themes (same green accent), switchable at runtime.
 import { theme } from "antd";
 import type { ThemeConfig } from "antd";
+import { BRAND, BRAND_HOVER, semanticColors } from "./tokens";
 
 const shared = {
-  colorPrimary: "#76B900",
-  colorInfo: "#76B900",
-  colorLink: "#76B900",
-  colorLinkHover: "#8FD400",
+  colorPrimary: BRAND,
+  colorLink: BRAND,
+  colorLinkHover: BRAND_HOVER,
   borderRadius: 8,
   fontFamily: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
 };
@@ -15,6 +15,9 @@ export const darkTheme: ThemeConfig = {
   algorithm: theme.darkAlgorithm,
   token: {
     ...shared,
+    colorInfo: semanticColors.dark.info,
+    colorWarning: semanticColors.dark.warning,
+    colorError: semanticColors.dark.danger,
     colorBgBase: "#0A0A0A",
     colorBgContainer: "#161616",
     colorBgElevated: "#1F1F1F",
@@ -29,7 +32,7 @@ export const darkTheme: ThemeConfig = {
       darkItemBg: "transparent",
       darkSubMenuItemBg: "transparent",
       darkItemSelectedBg: "rgba(118,185,0,0.16)",
-      darkItemSelectedColor: "#76B900",
+      darkItemSelectedColor: BRAND,
     },
     Card: { colorBgContainer: "#161616", colorBorderSecondary: "#2A2A2A" },
     Table: { headerBg: "#1F1F1F", rowHoverBg: "#1F1F1F", colorBgContainer: "#161616" },
@@ -45,6 +48,9 @@ export const darkTheme: ThemeConfig = {
 export const lightTheme: ThemeConfig = {
   token: {
     ...shared,
+    colorInfo: semanticColors.light.info,
+    colorWarning: semanticColors.light.warning,
+    colorError: semanticColors.light.danger,
     colorBgLayout: "#f4f6f8",
     colorBorderSecondary: "#eceff3",
   },

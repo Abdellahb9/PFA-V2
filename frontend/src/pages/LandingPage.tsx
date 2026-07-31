@@ -1,6 +1,6 @@
 // Public landing page for the Phosboucraa Foundation (no authentication).
-// The Foundation green (#3DBB5E) is injected via a scoped ConfigProvider, so
-// inner sections read it from the AntD theme tokens (theme.useToken()).
+// Inherits the global brand theme; sections read colors from the AntD theme
+// tokens (theme.useToken()).
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {

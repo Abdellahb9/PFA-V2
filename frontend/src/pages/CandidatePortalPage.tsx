@@ -99,7 +99,7 @@ export default function CandidatePortalPage() {
         }}
       >
         <span style={{ fontWeight: 700 }}>
-          <FileDoneOutlined style={{ color: "#76B900", marginRight: 8 }} />
+          <FileDoneOutlined style={{ color: token.colorPrimary, marginRight: 8 }} />
           Mon espace candidat
         </span>
         <Space>

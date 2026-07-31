@@ -54,7 +54,7 @@ export default function AppLayout() {
       >
         <div
           style={{
-            color: "#76B900",
+            color: token.colorPrimary,
             padding: "18px 16px",
             fontWeight: 700,
             fontSize: 16,
@@ -62,7 +62,7 @@ export default function AppLayout() {
           }}
         >
           PHOSBOUCRAA
-          <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 400 }}>
+          <div style={{ fontSize: 11, color: token.colorTextSecondary, fontWeight: 400 }}>
             Assistant IA Stages
           </div>
         </div>
@@ -104,7 +104,7 @@ export default function AppLayout() {
             }}
           >
             <div style={{ cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
-              <Avatar icon={<UserOutlined />} style={{ background: "#76B900" }} />
+              <Avatar icon={<UserOutlined />} style={{ background: token.colorPrimary }} />
               <Typography.Text>{user?.full_name ?? "Utilisateur"}</Typography.Text>
             </div>
           </Dropdown>

@@ -20,6 +20,7 @@ import {
   Typography,
   Upload,
   message,
+  theme,
 } from "antd";
 import {
   DeleteOutlined,
@@ -138,6 +139,7 @@ function Sources({ intent, sources }: { intent: AssistantIntent; sources: Assist
 }
 
 export default function AssistantPage() {
+  const { token } = theme.useToken();
   const [query, setQuery] = useState("");
   const [assignmentId, setAssignmentId] = useState<number | null>(null);
   const [history, setHistory] = useState<ChatTurn[]>([]);
@@ -171,7 +173,7 @@ export default function AssistantPage() {
         <Card
           title={
             <Space>
-              <RobotOutlined style={{ color: "#76B900" }} />
+              <RobotOutlined style={{ color: token.colorPrimary }} />
               Assistant RAG
             </Space>
           }
@@ -202,7 +204,7 @@ export default function AssistantPage() {
                     </Paragraph>
                     <Card size="small" style={{ background: "transparent" }}>
                       <Space style={{ marginBottom: 8 }}>
-                        <RobotOutlined style={{ color: "#76B900" }} />
+                        <RobotOutlined style={{ color: token.colorPrimary }} />
                         <Tag color={intent.color}>{intent.label}</Tag>
                       </Space>
                       <Paragraph style={{ whiteSpace: "pre-wrap", marginBottom: 0 }}>
@@ -272,7 +274,7 @@ export default function AssistantPage() {
             }}
           >
             <p className="ant-upload-drag-icon">
-              <InboxOutlined style={{ color: "#76B900" }} />
+              <InboxOutlined style={{ color: token.colorPrimary }} />
             </p>
             <p className="ant-upload-text">Déposez un document PDF, DOCX ou TXT</p>
             <p className="ant-upload-hint">

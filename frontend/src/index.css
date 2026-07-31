@@ -45,8 +45,9 @@ body,
   line-height: 1.1;
 }
 
-.chart-card {
-  height: 360px;
+/* Columns of figures (tables, axis ticks) align on equal-width digits. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Loading animations (used by AppLoader / fade-in transitions) ---- */

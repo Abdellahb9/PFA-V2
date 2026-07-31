@@ -1,7 +1,7 @@
 // Applications list: upload new CVs, live parsing status, view stored CV,
 // extracted skills, and matching score.
 import { useState } from "react";
-import { Card, Tag, Select, Progress, Button, Space, Popconfirm, message } from "antd";
+import { Card, Tag, Select, Progress, Button, Space, Popconfirm, message, theme } from "antd";
 import {
   PlusOutlined,
   FilePdfOutlined,
@@ -33,6 +33,7 @@ export default function ApplicationsPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const { data, isLoading, isFetching } = useApplications(status);
   const deleteApp = useDeleteApplication();
+  const { token } = theme.useToken();
 
   const onView = async (applicationId: number) => {
     try {
@@ -67,7 +68,7 @@ export default function ApplicationsPage() {
       key: "skills",
       render: (_: unknown, r: Application) => {
         const skills: SkillRef[] = r.candidate?.skills ?? [];
-        if (!skills.length) return <span style={{ color: "#aaa" }}>—</span>;
+        if (!skills.length) return <span style={{ color: token.colorTextTertiary }}>—</span>;
         return (
           <Space size={[0, 4]} wrap>
             {skills.slice(0, 5).map((s) => (
@@ -104,7 +105,7 @@ export default function ApplicationsPage() {
             Voir
           </Button>
         ) : (
-          <span style={{ color: "#aaa" }}>—</span>
+          <span style={{ color: token.colorTextTertiary }}>—</span>
         ),
     },
     {
@@ -137,7 +138,7 @@ export default function ApplicationsPage() {
       title="Candidatures"
       extra={
         <Space>
-          {isFetching && <ReloadOutlined spin style={{ color: "#76B900" }} />}
+          {isFetching && <ReloadOutlined spin style={{ color: token.colorPrimary }} />}
           <Select
             allowClear
             placeholder="Filtrer par statut"
