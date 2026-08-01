@@ -145,7 +145,7 @@ function LandingContent() {
                 style={{ fontSize: 18, maxWidth: 680, margin: "0 auto 28px" }}
               >
                 OCP accompagne les étudiants vers l'excellence à travers des stages
-                encadrés au sein de ses départements. (Texte placeholder.)
+                encadrés au sein de ses départements.
               </Paragraph>
               <Space size="middle" wrap style={{ justifyContent: "center" }}>
                 <Button
@@ -210,9 +210,9 @@ function LandingContent() {
               <Col xs={24} md={12}>
                 <Title level={2}>Notre mission</Title>
                 <Paragraph style={{ fontSize: 16 }}>
-                  [Texte placeholder] OCP œuvre pour le développement humain et territorial
-                  des provinces du Sud du Maroc, en investissant dans l'éducation,
-                  l'employabilité des jeunes et l'innovation.
+                  OCP œuvre pour le développement humain et territorial des provinces du
+                  Sud du Maroc, en investissant dans l'éducation, l'employabilité des
+                  jeunes et l'innovation.
                 </Paragraph>
                 <Space size="large" wrap>
                   <Space>
@@ -229,7 +229,6 @@ function LandingContent() {
                 <Card style={{ borderColor: token.colorPrimary }}>
                   <Paragraph italic style={{ marginBottom: 0, fontSize: 16 }}>
                     « Investir dans la jeunesse, c'est bâtir l'avenir des territoires. »
-                    (Citation placeholder.)
                   </Paragraph>
                 </Card>
               </Col>
