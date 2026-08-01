@@ -1,4 +1,4 @@
-// Public landing page for the Phosboucraa Foundation (no authentication).
+// Public landing page for OCP (no authentication).
 // Inherits the global brand theme; sections read colors from the AntD theme
 // tokens (theme.useToken()).
 import { useState } from "react";
@@ -144,8 +144,8 @@ function LandingContent() {
                 type="secondary"
                 style={{ fontSize: 18, maxWidth: 680, margin: "0 auto 28px" }}
               >
-                La Fondation Phosboucraa accompagne les étudiants vers l'excellence à travers
-                des stages encadrés au sein de ses départements. (Texte placeholder.)
+                OCP accompagne les étudiants vers l'excellence à travers des stages
+                encadrés au sein de ses départements. (Texte placeholder.)
               </Paragraph>
               <Space size="middle" wrap style={{ justifyContent: "center" }}>
                 <Button
@@ -210,9 +210,9 @@ function LandingContent() {
               <Col xs={24} md={12}>
                 <Title level={2}>Notre mission</Title>
                 <Paragraph style={{ fontSize: 16 }}>
-                  [Texte placeholder] La Fondation Phosboucraa œuvre pour le développement
-                  humain et territorial des provinces du Sud du Maroc, en investissant dans
-                  l'éducation, l'employabilité des jeunes et l'innovation.
+                  [Texte placeholder] OCP œuvre pour le développement humain et territorial
+                  des provinces du Sud du Maroc, en investissant dans l'éducation,
+                  l'employabilité des jeunes et l'innovation.
                 </Paragraph>
                 <Space size="large" wrap>
                   <Space>
@@ -255,7 +255,7 @@ function LandingContent() {
             <a href="mailto:contact@phosboucraa.ma">Contact</a>
           </Space>
           <Text type="secondary">
-            © {new Date().getFullYear()} Phosboucraa Foundation — Tous droits réservés.
+            © {new Date().getFullYear()} OCP — Tous droits réservés.
           </Text>
         </Space>
       </Footer>

@@ -63,7 +63,7 @@ export default function AppLayout() {
             lineHeight: 1.3,
           }}
         >
-          PHOSBOUCRAA
+          OCP
           <div style={{ fontSize: 11, color: token.colorTextSecondary, fontWeight: 400 }}>
             Assistant IA Stages
           </div>

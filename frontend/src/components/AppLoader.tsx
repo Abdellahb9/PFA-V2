@@ -52,10 +52,10 @@ export default function AppLoader({ tip = "Chargement de l'application…" }: Pr
             boxShadow: token.boxShadowSecondary,
           }}
         >
-          P
+          O
         </div>
         <div style={{ fontWeight: 700, fontSize: 18, color: token.colorText }}>
-          PHOSBOUCRAA
+          OCP
         </div>
         <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
           Assistant IA — Gestion des stages

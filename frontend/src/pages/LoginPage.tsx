@@ -67,7 +67,7 @@ export default function LoginPage() {
             Assistant IA
           </Typography.Title>
           <Typography.Text type="secondary">
-            Gestion des stages — PHOSBOUCRAA
+            Gestion des stages — OCP
           </Typography.Text>
         </div>
 
