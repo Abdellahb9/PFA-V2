@@ -28,7 +28,7 @@ import { usePublicOffers } from "@/api/hooks";
 import FadeIn from "@/components/FadeIn";
 import PublicApplicationModal from "@/components/PublicApplicationModal";
 import type { PublicOffer } from "@/api/types";
-import logo from "@/assets/phosboucraa-logo.png";
+import logo from "@/assets/ocp-logo.png";
 import ThemeToggle from "@/components/ThemeToggle";
 
 const { Header, Content, Footer } = Layout;
@@ -115,7 +115,7 @@ function LandingContent() {
           paddingInline: 24,
         }}
       >
-        <img src={logo} alt="Phosboucraa Foundation" style={{ height: 40 }} />
+        <img src={logo} alt="OCP" style={{ height: 36 }} />
         <Space>
           <ThemeToggle />
           <Button onClick={() => navigate("/inscription")}>Créer un compte</Button>
