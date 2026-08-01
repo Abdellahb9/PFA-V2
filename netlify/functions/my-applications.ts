@@ -8,7 +8,8 @@ import { json, fail } from "./_shared/http";
 export const config = { path: "/api/my-applications" };
 
 const SELECT =
-  "id, status, created_at, offer:internship_offers(title, department:departments(name)), " +
+  "id, status, created_at, start_date, end_date, duration_months, " +
+  "offer:internship_offers(title, department:departments(name)), " +
   "application_events(status, note, created_at)";
 
 function serialize(a: any) {
@@ -21,6 +22,9 @@ function serialize(a: any) {
     created_at: a.created_at,
     offer_title: a.offer?.title ?? null,
     department_name: a.offer?.department?.name ?? null,
+    start_date: a.start_date ?? null,
+    end_date: a.end_date ?? null,
+    duration_months: a.duration_months ?? null,
     events: events.map((e: any) => ({ status: e.status, note: e.note, created_at: e.created_at })),
   };
 }

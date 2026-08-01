@@ -24,9 +24,14 @@ const ApplicationsPage = lazy(() => import("@/pages/ApplicationsPage"));
 const MatchingPage = lazy(() => import("@/pages/MatchingPage"));
 const UsersPage = lazy(() => import("@/pages/UsersPage"));
 const AssistantPage = lazy(() => import("@/pages/AssistantPage"));
+const BookingsPage = lazy(() => import("@/pages/BookingsPage"));
 // Dev-only visual preview of the dashboard (mock data, no auth).
 const DevPreviewDashboard = import.meta.env.DEV
   ? lazy(() => import("@/pages/DevPreviewDashboard"))
+  : null;
+// Dev-only preview of the booked-offers page + the apply modal (mock data).
+const DevPreviewBookings = import.meta.env.DEV
+  ? lazy(() => import("@/pages/DevPreviewBookings"))
   : null;
 
 // Detect a persisted Supabase session synchronously to avoid a splash flash
@@ -88,6 +93,7 @@ export default function App() {
           <Route path="/offres" element={<OffersPage />} />
           <Route path="/matching" element={<MatchingPage />} />
           <Route path="/assistant" element={<AssistantPage />} />
+          <Route path="/reservations" element={<BookingsPage />} />
           <Route path="/utilisateurs" element={<UsersPage />} />
         </Route>
         {DevPreviewDashboard && (
@@ -96,6 +102,16 @@ export default function App() {
             element={
               <Suspense fallback={null}>
                 <DevPreviewDashboard />
+              </Suspense>
+            }
+          />
+        )}
+        {DevPreviewBookings && (
+          <Route
+            path="/__preview/reservations"
+            element={
+              <Suspense fallback={null}>
+                <DevPreviewBookings />
               </Suspense>
             }
           />

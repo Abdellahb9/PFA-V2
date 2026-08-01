@@ -6,6 +6,7 @@ import type {
   AdminUser,
   Application,
   AssistantResponse,
+  Booking,
   CapacityForecast,
   Candidate,
   CandidateDetail,
@@ -274,9 +275,35 @@ export const useDecideAssignment = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["applications"] });
+      // A decision creates/removes a booking.
+      qc.invalidateQueries({ queryKey: ["bookings"] });
     },
   });
 };
+
+// ---- Booked offers ----
+// `from`/`to` keep the bookings that OVERLAP the window, not just those
+// starting inside it, so a running internship shows up in the month you ask for.
+export const useBookings = (params: {
+  status?: string;
+  from?: string;
+  to?: string;
+  include_undated?: boolean;
+}) =>
+  useQuery({
+    queryKey: ["bookings", params],
+    queryFn: async () =>
+      (
+        await api.get<Booking[]>("/bookings", {
+          params: {
+            status: params.status,
+            from: params.from,
+            to: params.to,
+            include_undated: params.include_undated ? 1 : undefined,
+          },
+        })
+      ).data,
+  });
 
 // Per-offer ranking of all compatible candidates (fetched on demand).
 export const useOfferRankings = (

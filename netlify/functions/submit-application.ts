@@ -17,6 +17,13 @@ const schema = z.object({
   university: z.string().max(200).optional(),
   motivation: z.string().max(4000).optional(),
   offer_id: z.number().int().positive().nullable().optional(),
+  // Requested internship period. end_date is derived in Postgres (trigger).
+  start_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "start_date must be YYYY-MM-DD")
+    .nullable()
+    .optional(),
+  duration_months: z.number().int().min(1).max(12).nullable().optional(),
   cv: z.object({
     path: z.string().min(1),
     filename: z.string().min(1),
@@ -84,6 +91,8 @@ export default async (req: Request): Promise<Response> => {
       candidate_id: candidateId,
       offer_id: b.offer_id ?? null,
       motivation: b.motivation ?? null,
+      start_date: b.start_date ?? null,
+      duration_months: b.duration_months ?? null,
       status: "submitted",
     })
     .select("id, status")

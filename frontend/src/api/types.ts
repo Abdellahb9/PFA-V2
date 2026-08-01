@@ -59,7 +59,31 @@ export interface MyApplication {
   created_at: string;
   offer_title: string | null;
   department_name: string | null;
+  /** Requested internship period (end_date is derived from the duration). */
+  start_date: string | null;
+  end_date: string | null;
+  duration_months: number | null;
   events: MyApplicationEvent[];
+}
+
+// A booked offer slot: a confirmed (or proposed) assignment placed on the
+// calendar by the period the candidate requested when applying.
+export interface Booking {
+  assignment_id: number;
+  status: "proposed" | "confirmed" | "rejected";
+  match_score: number | null;
+  decided_by: string | null;
+  created_at: string;
+  candidate_id: number | null;
+  person_name: string;
+  person_email: string | null;
+  offer_id: number | null;
+  offer_title: string;
+  department_name: string | null;
+  application_id: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  duration_months: number | null;
 }
 
 // Public, read-only offer shown on the landing page (no auth).

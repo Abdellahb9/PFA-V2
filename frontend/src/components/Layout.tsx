@@ -11,6 +11,7 @@ import {
   UserOutlined,
   UsergroupAddOutlined,
   RobotOutlined,
+  CalendarOutlined,
 } from "@ant-design/icons";
 import { Suspense } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -31,6 +32,7 @@ const NAV = [
   { key: "/offres", icon: <SolutionOutlined />, label: "Offres de stage" },
   { key: "/matching", icon: <DeploymentUnitOutlined />, label: "Affectation IA" },
   { key: "/assistant", icon: <RobotOutlined />, label: "Assistant RAG" },
+  { key: "/reservations", icon: <CalendarOutlined />, label: "Offres réservées" },
 ];
 // Admin-only navigation item (user management).
 const ADMIN_NAV = { key: "/utilisateurs", icon: <UsergroupAddOutlined />, label: "Utilisateurs" };

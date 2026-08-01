@@ -50,6 +50,14 @@ function ApplicationCard({ app }: { app: MyApplication }) {
           <Typography.Text type="secondary">
             {app.department_name ?? "—"} · déposée le{" "}
             {new Date(app.created_at).toLocaleDateString("fr-FR")}
+            {app.start_date && app.end_date && (
+              <>
+                {" · stage du "}
+                {new Date(app.start_date).toLocaleDateString("fr-FR")} au{" "}
+                {new Date(app.end_date).toLocaleDateString("fr-FR")}
+                {app.duration_months ? ` (${app.duration_months} mois)` : ""}
+              </>
+            )}
           </Typography.Text>
         </div>
         {app.status === "assigned" && <Tag color="green">Acceptée</Tag>}

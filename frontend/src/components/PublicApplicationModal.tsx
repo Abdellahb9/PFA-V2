@@ -9,6 +9,7 @@ import { z } from "zod";
 import {
   Button,
   Col,
+  DatePicker,
   Form,
   Input,
   Modal,
@@ -20,6 +21,7 @@ import {
 } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import type { UploadFile } from "antd";
+import dayjs, { type Dayjs } from "dayjs";
 import { useSubmitPublicApplication } from "@/api/hooks";
 import { apiErrorMessage } from "@/api/client";
 import type { PublicOffer } from "@/api/types";
@@ -27,6 +29,8 @@ import type { PublicOffer } from "@/api/types";
 const MAX_MB = 10;
 const ACCEPT = ".pdf,.docx";
 const EDUCATION_LEVELS = ["Bac+2", "Bac+3", "Bac+4", "Bac+5", "Doctorat"];
+// 1–12 months: the range the booking period allows (see migration 0009).
+const DURATIONS = [1, 2, 3, 4, 5, 6, 9, 12];
 
 const schema = z.object({
   first_name: z.string().min(1, "Prénom requis"),
@@ -39,6 +43,13 @@ const schema = z.object({
   field_of_study: z.string().optional(),
   education_level: z.string().optional(),
   motivation: z.string().optional(),
+  // Requested internship period — what books the offer slot once assigned.
+  start_date: z.custom<Dayjs>((v) => dayjs.isDayjs(v), "Date de début requise"),
+  duration_months: z
+    .number({ invalid_type_error: "Durée requise" })
+    .int()
+    .min(1)
+    .max(12),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -56,6 +67,7 @@ export default function PublicApplicationModal({ open, offer, onClose }: Props) 
     control,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -67,10 +79,23 @@ export default function PublicApplicationModal({ open, offer, onClose }: Props) 
       field_of_study: "",
       education_level: undefined,
       motivation: "",
+      start_date: undefined,
+      duration_months: undefined,
     },
   });
 
   const file = fileList[0]?.originFileObj;
+
+  // Echo the resulting period back so the candidate sees the end date the
+  // booking will use (the server derives it the same way).
+  const startDate = watch("start_date");
+  const durationMonths = watch("duration_months");
+  const periodLabel =
+    startDate && durationMonths
+      ? `${startDate.format("DD/MM/YYYY")} → ${startDate
+          .add(durationMonths, "month")
+          .format("DD/MM/YYYY")}`
+      : null;
 
   // Client-side validation: PDF/DOCX only, max 10 MB (server re-validates).
   const beforeUpload = (f: File) => {
@@ -108,6 +133,9 @@ export default function PublicApplicationModal({ open, offer, onClose }: Props) 
     if (values.education_level) fields.education_level = values.education_level;
     if (values.motivation) fields.motivation = values.motivation;
     if (offer) fields.offer_id = offer.id;
+    // Send the date only (no time/zone): the column is a DATE.
+    fields.start_date = values.start_date.format("YYYY-MM-DD");
+    fields.duration_months = values.duration_months;
 
     try {
       await submit.mutateAsync({ fields, file });
@@ -242,6 +270,60 @@ export default function PublicApplicationModal({ open, offer, onClose }: Props) 
             </Form.Item>
           </Col>
         </Row>
+
+        <Row gutter={16}>
+          <Col xs={24} sm={12}>
+            <Form.Item
+              label="Début du stage"
+              required
+              validateStatus={errors.start_date ? "error" : ""}
+              help={errors.start_date?.message as string | undefined}
+            >
+              <Controller
+                name="start_date"
+                control={control}
+                render={({ field }) => (
+                  <DatePicker
+                    {...field}
+                    style={{ width: "100%" }}
+                    format="DD/MM/YYYY"
+                    placeholder="Sélectionner une date"
+                    // An internship can't start in the past.
+                    disabledDate={(d) => d && d < dayjs().startOf("day")}
+                  />
+                )}
+              />
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={12}>
+            <Form.Item
+              label="Durée du stage"
+              required
+              validateStatus={errors.duration_months ? "error" : ""}
+              help={errors.duration_months?.message}
+            >
+              <Controller
+                name="duration_months"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    {...field}
+                    placeholder="Sélectionner"
+                    options={DURATIONS.map((m) => ({
+                      value: m,
+                      label: `${m} mois`,
+                    }))}
+                  />
+                )}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
+        {periodLabel && (
+          <Typography.Paragraph type="secondary" style={{ marginTop: -12 }}>
+            Période demandée : {periodLabel}
+          </Typography.Paragraph>
+        )}
 
         <Form.Item label="Motivation (optionnel)">
           <Controller

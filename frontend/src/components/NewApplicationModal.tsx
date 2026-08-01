@@ -6,10 +6,12 @@ import {
   Select,
   Upload,
   Button,
+  DatePicker,
   message,
   Row,
   Col,
 } from "antd";
+import type { Dayjs } from "dayjs";
 import { UploadOutlined } from "@ant-design/icons";
 import type { UploadFile } from "antd";
 import { useOffers, useSubmitApplication } from "@/api/hooks";
@@ -20,6 +22,8 @@ interface Props {
 }
 
 const EDUCATION_LEVELS = ["Bac+2", "Bac+3", "Bac+4", "Bac+5", "Doctorat"];
+// Same range the booking period allows (see migration 0009).
+const DURATIONS = [1, 2, 3, 4, 5, 6, 9, 12];
 
 // Extract the AntD Upload event into a fileList for the Form.
 const normFile = (e: { fileList: UploadFile[] } | UploadFile[]) =>
@@ -49,6 +53,9 @@ export default function NewApplicationModal({ open, onClose }: Props) {
     if (values.university) fields.university = values.university;
     if (values.motivation) fields.motivation = values.motivation;
     if (values.offer_id) fields.offer_id = values.offer_id;
+    // Date only (no time/zone): the column is a DATE.
+    fields.start_date = (values.start_date as Dayjs).format("YYYY-MM-DD");
+    fields.duration_months = values.duration_months;
 
     try {
       await submit.mutateAsync({ fields, file: cvFile });
@@ -131,6 +138,29 @@ export default function NewApplicationModal({ open, onClose }: Props) {
         <Form.Item name="university" label="Établissement">
           <Input placeholder="ENSA / FST / …" />
         </Form.Item>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              name="start_date"
+              label="Début du stage"
+              rules={[{ required: true, message: "Date de début requise" }]}
+            >
+              <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              name="duration_months"
+              label="Durée du stage"
+              rules={[{ required: true, message: "Durée requise" }]}
+            >
+              <Select
+                placeholder="Sélectionner"
+                options={DURATIONS.map((m) => ({ value: m, label: `${m} mois` }))}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
         <Form.Item name="offer_id" label="Offre visée (optionnel)">
           <Select
             allowClear

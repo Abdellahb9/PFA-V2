@@ -20,6 +20,7 @@ import capacityForecast from "../netlify/functions/capacity-forecast";
 import createUploadUrl from "../netlify/functions/create-upload-url";
 import analyzeBackground from "../netlify/functions/analyze-application-background";
 import assistant from "../netlify/functions/assistant";
+import bookings from "../netlify/functions/bookings";
 
 // Handlers are the Netlify v2 defaults; they only read `ctx.params` at runtime,
 // so `ctx` is loosely typed here to accept every handler signature.
@@ -54,6 +55,7 @@ const routes: Route[] = [
   { re: /^\/api\/users\/([^/]+)\/?$/, fn: users, keys: ["id"] },
   { re: /^\/api\/users\/?$/, fn: users },
 
+  { re: /^\/api\/bookings\/?$/, fn: bookings },
   { re: /^\/api\/offer-rankings\/?$/, fn: offerRankings },
   { re: /^\/api\/capacity-forecast\/?$/, fn: capacityForecast },
   { re: /^\/api\/matching-runs\/?$/, fn: matchingRuns },
