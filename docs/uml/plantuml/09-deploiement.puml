@@ -1,0 +1,78 @@
+@startuml 09-deploiement
+' Diagramme de déploiement — configuration physique en production.
+' Stéréotypes du cours : « device », « executionEnvironment », « CPU ».
+' Les associations portent le protocole et les multiplicités.
+
+title Déploiement en production
+
+node "Poste client" <<device>> {
+  component "Navigateur" as BROWSER {
+    artifact "index.html + bundles JS/CSS" as BUNDLE <<file>>
+    artifact "ocp-logo.png, polices" as ASSETS <<file>>
+  }
+}
+
+cloud "Vercel" {
+  node "CDN Edge" <<device>> as CDN {
+    artifact "frontend/dist" as DIST <<file>>
+  }
+  node "Fonction serverless" <<executionEnvironment>> as FN {
+    artifact "api/_handler.cjs" as HANDLER <<file>>
+    note right of HANDLER
+      Bundle esbuild de tous les
+      handlers, produit au build.
+      maxDuration = 60 s
+    end note
+  }
+}
+
+cloud "Supabase" {
+  node "PostgreSQL" <<device>> as PG {
+    database "phosboucraa" as DBX {
+      artifact "tables métier (RLS activé)" as T1 <<table>>
+      artifact "document_chunks + FTS bilingue" as T2 <<table>>
+      artifact "cache d'analyse CV" as T3 <<table>>
+    }
+  }
+  node "Auth" <<executionEnvironment>> as AUTH
+  node "Storage" <<device>> as STORAGE {
+    artifact "bucket documents (CV)" as BUCKET <<file>>
+  }
+}
+
+cloud "Groq" {
+  node "Inférence LLM" <<executionEnvironment>> as GROQ
+}
+
+node "Poste de développement" <<device>> as DEV {
+  artifact "scripts/train_forecast.py" as TRAIN <<file>>
+  artifact "forecast_model.json" as MODEL <<file>>
+}
+
+' --- Liaisons physiques ---
+BROWSER "1..*" -- "1" CDN : HTTPS
+BROWSER "1..*" -- "1" FN : HTTPS / JSON
+BROWSER "1..*" -- "1" AUTH : HTTPS (JWT)
+BROWSER "1..*" -- "1" STORAGE : HTTPS\n(URL signée)
+
+FN "1" -- "1" PG : postgres\n(clé service role)
+FN "1" -- "1" STORAGE : HTTPS
+FN "1" -- "1" AUTH : vérification du JWT
+FN "1" -- "1" GROQ : HTTPS
+
+TRAIN ..> MODEL : produit
+MODEL ..> HANDLER : embarqué au build
+
+note bottom of FN
+  Une seule fonction sert **toutes** les routes :
+  une réécriture /api/:path+ dirige les chemins
+  imbriqués vers ce catch-all.
+end note
+
+note bottom of PG
+  RLS activé partout, aucune police anonyme :
+  le navigateur ne lit jamais les tables
+  directement — seules les fonctions le font.
+end note
+
+@enduml

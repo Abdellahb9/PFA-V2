@@ -1,0 +1,46 @@
+%% Déploiement en production — les noeuds sont rendus par des sous-graphes,
+%% les stéréotypes («device», «executionEnvironment») en texte.
+%% Version normative en PlantUML.
+flowchart TB
+  classDef node fill:#f5f5f5,stroke:#555,color:#000
+  classDef art fill:#fff,stroke:#999,color:#000
+  classDef ext fill:#fff7e6,stroke:#C98300,color:#000
+
+  subgraph CLIENT["«device» Poste client"]
+    BROWSER["Navigateur"]:::node
+    BUNDLE["«file» index.html + bundles JS/CSS"]:::art
+    ASSETS["«file» logo, polices"]:::art
+    BROWSER --- BUNDLE
+    BROWSER --- ASSETS
+  end
+
+  subgraph VERCEL["Vercel"]
+    CDN["«device» CDN Edge<br/>frontend/dist"]:::node
+    FN["«executionEnvironment»<br/>Fonction serverless<br/>api/_handler.cjs — maxDuration 60 s"]:::node
+  end
+
+  subgraph SUPABASE["Supabase"]
+    PG["«device» PostgreSQL<br/>tables métier (RLS activé)<br/>document_chunks + FTS bilingue<br/>cache d'analyse CV"]:::node
+    AUTH["«executionEnvironment» Auth"]:::node
+    STORAGE["«device» Storage<br/>bucket documents (CV)"]:::node
+  end
+
+  GROQC["«executionEnvironment»<br/>Groq — inférence LLM"]:::ext
+
+  subgraph DEV["«device» Poste de développement"]
+    TRAIN["«file» scripts/train_forecast.py"]:::art
+    MODEL["«file» forecast_model.json"]:::art
+    TRAIN -->|produit| MODEL
+  end
+
+  BROWSER ---|"HTTPS  1..* → 1"| CDN
+  BROWSER ---|"HTTPS / JSON"| FN
+  BROWSER ---|"HTTPS (JWT)"| AUTH
+  BROWSER ---|"HTTPS (URL signée)"| STORAGE
+
+  FN ---|"postgres (clé service role)"| PG
+  FN ---|HTTPS| STORAGE
+  FN ---|"vérification du JWT"| AUTH
+  FN ---|HTTPS| GROQC
+
+  MODEL -.->|embarqué au build| FN

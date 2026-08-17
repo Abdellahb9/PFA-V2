@@ -1,0 +1,90 @@
+@startuml 07-activites-candidature
+' Diagramme d'activités avec couloirs (swimlanes) — du dépôt de la
+' candidature à la réservation de la place.
+' Montre le parallélisme (barre de synchronisation) entre la réponse
+' immédiate au candidat et l'analyse du CV qui se poursuit en fond.
+
+title Traitement d'une candidature — de la soumission à la réservation
+
+|Candidat|
+start
+:Consulter les offres;
+:Choisir une offre
+(ou candidature générale);
+:Saisir identité,
+période souhaitée (début + durée);
+:Déposer le CV (PDF/DOCX);
+
+|Système — API|
+:Valider le formulaire;
+if (données valides ?) then ([non])
+  |Candidat|
+  :Corriger la saisie;
+  detach
+else ([oui])
+endif
+
+:Téléverser le CV
+vers le stockage;
+:Créer candidat (ou réutiliser
+celui de même email);
+:Créer la candidature
+(status = soumise);
+
+fork
+  |Candidat|
+  :Recevoir la confirmation;
+fork again
+  |Système — Analyse (arrière-plan)|
+  :Extraire le texte du CV;
+  if (texte exploitable ?) then ([non])
+    :status = échec;
+    stop
+  else ([oui])
+  endif
+  if (CV déjà analysé ?) then ([oui])
+    :Lire le profil en cache;
+  else ([non])
+    :Appeler le LLM (Groq);
+    :Mettre en cache le résultat;
+  endif
+  :Enregistrer compétences,
+  formation, expérience;
+  :status = analysée;
+  :Calculer le meilleur score;
+end fork
+
+|Recruteur|
+:Consulter les candidatures;
+:Lancer l'affectation IA;
+
+|Système — Affectation|
+:Scorer tous les couples
+(candidat, offre);
+:Résoudre l'affectation globale
+(algorithme hongrois);
+:Proposer les affectations
+(status = proposée);
+
+|Recruteur|
+:Examiner les propositions
+et le détail des scores;
+if (affectation retenue ?) then ([non])
+  :Rejeter;
+  :status = analysée;
+  stop
+else ([oui])
+endif
+:Confirmer l'affectation;
+
+|Système — API|
+:status candidature = affectée;
+:La place de l'offre est réservée
+sur [début, fin];
+
+|Recruteur|
+:Consulter « Offres réservées »
+groupées par mois;
+stop
+
+@enduml

@@ -1,0 +1,69 @@
+%% Analyse asynchrone du CV — fonction d'arrière-plan.
+%% Boucle sur les documents, cache des résultats LLM par empreinte SHA-256,
+%% bascule en `failed` si le texte est inexploitable.
+sequenceDiagram
+  autonumber
+  participant BG as analyse : Fonction (arrière-plan)
+  participant DB as bd : Postgres
+  participant ST as stockage : Storage
+  participant EX as extracteur : CV
+  participant CACHE as cache : CvCache
+  participant GROQ as groq : Groq API
+  participant SC as scoring : Scoring
+
+  BG->>DB: majStatut(candidature, parsing)
+  BG->>DB: documents(candidature)
+  DB-->>BG: documents
+
+  loop pour chaque document
+    BG->>ST: telecharger(chemin)
+    ST-->>BG: octets
+    BG->>EX: extraireTexte(octets, nomFichier)
+    Note right of EX: PDF → unpdf<br/>DOCX → mammoth
+    EX-->>BG: texte
+  end
+
+  alt texte vide
+    BG->>DB: majStatut(candidature, failed)
+  else texte exploitable
+    BG->>CACHE: extraireProfil(texte)
+    activate CACHE
+    CACHE->>CACHE: empreinte = SHA-256(texte)
+
+    alt empreinte déjà connue
+      CACHE->>DB: lireCache(empreinte)
+      DB-->>CACHE: profil
+      Note right of CACHE: ré-analyser un CV identique<br/>ne consomme aucun jeton
+    else empreinte inconnue
+      CACHE->>GROQ: completion(prompt extraction)
+      GROQ-->>CACHE: profil structuré (JSON)
+      CACHE->>DB: ecrireCache(empreinte, profil)
+    end
+    CACHE-->>BG: profil (nom, email, formation, compétences)
+    deactivate CACHE
+
+    opt candidature importée en lot (email provisoire)
+      BG->>DB: chercherCandidat(profil.email)
+      DB-->>BG: existant ou null
+      alt candidat existant
+        BG->>DB: rattacher(candidature, existant)
+        BG->>DB: supprimerDoublon(candidatProvisoire)
+      else nouveau
+        BG->>DB: majIdentite(candidat, profil)
+      end
+    end
+
+    BG->>DB: majProfil(candidat, formation, expérience, cv_text)
+    BG->>DB: remplacerCompetences(candidat, compétences)
+    BG->>DB: majStatut(candidature, parsed)
+
+    BG->>SC: meilleurScore(candidat, offresOuvertes)
+    activate SC
+    loop pour chaque offre ouverte
+      SC->>SC: compositeScore(profil, offre)
+    end
+    SC-->>BG: score max
+    deactivate SC
+
+    BG->>DB: majScore(candidature, score)
+  end

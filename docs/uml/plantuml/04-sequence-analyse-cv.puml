@@ -1,0 +1,98 @@
+@startuml 04-sequence-analyse-cv
+' Analyse asynchrone du CV — fonction d'arrière-plan.
+' Illustre : boucle (loop), alternative (alt), cache de résultats LLM,
+' et le fait que l'échec fait basculer la candidature en `failed`
+' (voir le diagramme états-transitions 06).
+
+title Analyser le CV et calculer le score — niveau conception
+
+participant "analyse : Fonction\n(arrière-plan)" as BG
+database "bd : Postgres" as DB
+participant "stockage : Storage" as ST
+participant "extracteur : CV" as EX
+participant "cache : CvCache" as CACHE
+participant "groq : Groq API" as GROQ
+participant "scoring : Scoring" as SC
+
+[-> BG : analyser(candidature)
+activate BG
+
+BG -> DB : majStatut(candidature, parsing)
+
+BG -> DB : documents(candidature)
+activate DB
+DB --> BG : documents
+deactivate DB
+
+loop pour chaque document
+  BG -> ST : telecharger(chemin)
+  activate ST
+  ST --> BG : octets
+  deactivate ST
+  BG -> EX : extraireTexte(octets, nomFichier)
+  activate EX
+  note right of EX : PDF -> unpdf\nDOCX -> mammoth
+  EX --> BG : texte
+  deactivate EX
+end
+
+alt texte vide
+  BG -> DB : majStatut(candidature, failed)
+  [<-- BG : ok
+else texte exploitable
+
+  BG -> CACHE : extraireProfil(texte)
+  activate CACHE
+  CACHE -> CACHE : empreinte = SHA-256(texte)
+
+  alt empreinte déjà connue
+    CACHE -> DB : lireCache(empreinte)
+    activate DB
+    DB --> CACHE : profil
+    deactivate DB
+    note right of CACHE
+      Ré-analyser un CV identique
+      ne consomme aucun jeton.
+    end note
+  else empreinte inconnue
+    CACHE -> GROQ : completion(prompt extraction)
+    activate GROQ
+    GROQ --> CACHE : profil structuré (JSON)
+    deactivate GROQ
+    CACHE -> DB : ecrireCache(empreinte, profil)
+  end
+  CACHE --> BG : profil{nom, email, formation, compétences...}
+  deactivate CACHE
+
+  alt candidature importée en lot (email provisoire)
+    BG -> DB : chercherCandidat(profil.email)
+    activate DB
+    DB --> BG : existant ou null
+    deactivate DB
+    alt candidat existant
+      BG -> DB : rattacher(candidature, existant)
+      BG -> DB : supprimerDoublon(candidatProvisoire)
+    else
+      BG -> DB : majIdentite(candidat, profil)
+    end
+  end
+
+  BG -> DB : majProfil(candidat, formation, expérience, cv_text)
+  BG -> DB : remplacerCompetences(candidat, profil.compétences)
+
+  BG -> DB : majStatut(candidature, parsed)
+
+  BG -> SC : meilleurScore(candidat, offresOuvertes)
+  activate SC
+  loop pour chaque offre ouverte
+    SC -> SC : compositeScore(profil, offre)
+  end
+  SC --> BG : score max
+  deactivate SC
+
+  BG -> DB : majScore(candidature, score)
+  [<-- BG : ok
+end
+deactivate BG
+
+@enduml

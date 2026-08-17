@@ -1,0 +1,194 @@
+@startuml 02-classes
+' Diagramme de classes du domaine — Assistant IA de gestion des stages.
+' Conventions du cours : pas d'attribut typé par une classe du diagramme
+' (on met une association), attribut dérivé préfixé /, contraintes entre { }.
+
+skinparam classAttributeIconSize 0
+hide circle
+
+' ------------------------------------------------------------------ Comptes
+enum Role {
+  admin
+  recruiter
+  viewer
+  candidate
+}
+
+class Profil {
+  id : uuid
+  full_name : string
+  is_active : boolean
+  created_at : Date
+}
+
+' ---------------------------------------------------------------- Candidats
+class Candidat {
+  id : int
+  first_name : string
+  last_name : string
+  email : string
+  phone : string
+  education_level : string
+  field_of_study : string
+  university : string
+  years_experience : real
+  cv_text : string
+  --
+  /nom_complet : string
+}
+
+class Competence {
+  id : int
+  name : string
+  normalized : string {unique}
+  category : CategorieCompetence
+}
+
+enum CategorieCompetence {
+  technical
+  soft
+  language
+  domain
+}
+
+' ------------------------------------------------------------------- Offres
+class Departement {
+  id : int
+  name : string
+  code : string {unique}
+  supervisor_name : string
+  capacity : int {capacity >= 0}
+  --
+  /taux_remplissage : real
+}
+
+class OffreStage {
+  id : int
+  title : string
+  description : string
+  field : string
+  slots : int {slots >= 1}
+  min_education_level : string
+  status : StatutOffre
+}
+
+enum StatutOffre {
+  open
+  closed
+  draft
+}
+
+' ------------------------------------------------------------- Candidatures
+class Candidature {
+  id : int
+  status : StatutCandidature
+  motivation : string
+  match_score : real {0 <= match_score <= 1}
+  start_date : Date
+  duration_months : int {1..12}
+  /end_date : Date
+  parsed_at : Date
+  created_at : Date
+}
+
+enum StatutCandidature {
+  submitted
+  parsing
+  parsed
+  under_review
+  assigned
+  rejected
+  failed
+}
+
+class Document {
+  id : int
+  kind : TypeDocument
+  filename : string
+  storage_path : string
+  content_type : string
+  size : int {size <= 10 Mo}
+}
+
+enum TypeDocument {
+  cv
+  cover_letter
+  transcript
+  other
+}
+
+' --------------------------------------------------------------- Affectation
+class SessionMatching {
+  id : int
+  algorithm : string = "hungarian"
+  total_candidates : int
+  total_slots : int
+  /assignments_count : int
+  /average_score : real
+  created_at : Date
+}
+
+class Affectation {
+  id : int
+  match_score : real
+  score_breakdown : json
+  status : StatutAffectation
+  decided_by : string
+  created_at : Date
+}
+
+enum StatutAffectation {
+  proposed
+  confirmed
+  rejected
+}
+
+' ---------------------------------------------------------------------- RAG
+class ChunkDocument {
+  id : int
+  source_document : string
+  chunk_index : int
+  chunk_text : string
+  /search_vector : tsvector
+}
+
+' ---------------------------------------------------------- Associations
+Profil "1" -- "0..1" Candidat : compte >
+Profil --> Role : rôle
+
+Candidat "1" -- "*" Candidature : dépose >
+OffreStage "0..1" -- "*" Candidature : vise >
+Candidature "1" *-- "*" Document : pièces jointes >
+
+Departement "1" -- "*" OffreStage : propose >
+OffreStage "*" -- "*" Competence : requiert >
+Candidat "*" -- "*" Competence : maîtrise >
+
+Candidature "1" -- "0..1" Affectation : donne lieu à >
+Candidat "1" -- "*" Affectation
+OffreStage "1" -- "*" Affectation : occupe une place de >
+SessionMatching "0..1" -- "*" Affectation : produit >
+
+note right of Affectation
+  Une affectation **confirmée** réserve une place de l'offre
+  sur la période portée par la candidature
+  (start_date -> end_date). C'est la source de la page
+  « Offres réservées ».
+
+  {une candidature a au plus une affectation non rejetée}
+  {le nombre d'affectations confirmées sur une offre <= slots}
+end note
+
+note right of Candidature
+  {end_date = start_date + duration_months}
+  (dérivé, maintenu par un trigger Postgres)
+
+  {si status = assigned alors l'affectation est confirmed}
+end note
+
+note bottom of Competence
+  `normalized` porte la forme canonique produite par le LLM :
+  c'est elle qui sert à l'appariement, jamais le libellé brut.
+end note
+
+@enduml

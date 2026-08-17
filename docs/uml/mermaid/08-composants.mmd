@@ -1,0 +1,80 @@
+%% Architecture logique — les stéréotypes UML sont rendus en texte
+%% («executable», «library», «file»). Version normative en PlantUML.
+flowchart TB
+  classDef exe fill:#f6fbe9,stroke:#76B900,color:#000
+  classDef lib fill:#eef4ff,stroke:#2A78D6,color:#000
+  classDef ext fill:#fff7e6,stroke:#C98300,color:#000
+  classDef file fill:#f5f5f5,stroke:#888,color:#000
+
+  subgraph NAV["Navigateur"]
+    SPA["«executable»<br/>SPA React"]:::exe
+    ANTD["«library»<br/>AntD + thème"]:::lib
+    RQ["«library»<br/>React Query"]:::lib
+    SBJS["«library»<br/>supabase-js"]:::lib
+    SPA -.-> ANTD
+    SPA -.-> RQ
+    SPA -.-> SBJS
+  end
+
+  subgraph API["API serverless"]
+    ROUTER["«executable»<br/>Routeur /api/*"]:::exe
+
+    subgraph EP["Endpoints"]
+      C_APP["applications"]:::exe
+      C_OFF["offers / departments"]:::exe
+      C_SUB["submit-application"]:::exe
+      C_BG["analyze-application<br/>(arrière-plan)"]:::exe
+      C_MR["matching-run"]:::exe
+      C_AS["assignments"]:::exe
+      C_BK["bookings"]:::exe
+      C_RAG["assistant (RAG)"]:::exe
+      C_CF["capacity-forecast"]:::exe
+      C_DASH["dashboard"]:::exe
+    end
+
+    subgraph SHARED["Noyau partagé (_shared)"]
+      L_AUTH["«library» auth"]:::lib
+      L_DB["«library» db / supabase"]:::lib
+      L_CV["«library» cv + cv-cache"]:::lib
+      L_SK["«library» skills"]:::lib
+      L_SC["«library» scoring"]:::lib
+      L_HU["«library» hungarian"]:::lib
+      L_RAG["«library» rag"]:::lib
+      L_XGB["«library» xgb-predict"]:::lib
+      F_MODEL["«file»<br/>forecast_model.json"]:::file
+    end
+  end
+
+  subgraph EXT["Services externes"]
+    S_AUTH["Supabase Auth"]:::ext
+    S_DB["Supabase Postgres"]:::ext
+    S_ST["Supabase Storage"]:::ext
+    GROQ["Groq API"]:::ext
+  end
+
+  SPA -->|"requiert REST /api"| ROUTER
+  ROUTER --> C_APP & C_OFF & C_SUB & C_BG & C_MR & C_AS & C_BK & C_RAG & C_CF & C_DASH
+
+  C_APP -.-> L_AUTH
+  C_APP -.-> L_DB
+  C_SUB -.-> L_DB
+  C_BG -.-> L_CV
+  C_BG -.-> L_SK
+  C_BG -.-> L_SC
+  C_MR -.-> L_SC
+  C_MR -.-> L_HU
+  C_AS -.-> L_SC
+  C_BK -.-> L_DB
+  C_RAG -.-> L_RAG
+  C_CF -.-> L_XGB
+  C_DASH -.-> L_DB
+  L_XGB -.->|lit| F_MODEL
+
+  L_AUTH -.-> S_AUTH
+  L_DB -.-> S_DB
+  L_CV -.-> S_ST
+  L_CV -.-> GROQ
+  L_RAG -.-> GROQ
+  L_RAG -.-> S_DB
+  SBJS -.-> S_AUTH
+  SBJS -.->|URL signée| S_ST

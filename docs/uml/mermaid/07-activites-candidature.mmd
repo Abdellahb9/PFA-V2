@@ -1,0 +1,75 @@
+%% Diagramme d'activités avec couloirs — Mermaid n'a pas d'activité UML native :
+%% les couloirs sont rendus par des sous-graphes, la barre de synchronisation
+%% par un noeud de jonction. La version normative est en PlantUML.
+flowchart TB
+  classDef fork fill:#333,stroke:#333,color:#fff
+
+  START(( )) --> A1
+
+  subgraph SW1["Candidat"]
+    A1["Consulter les offres"]
+    A2["Choisir une offre<br/>(ou candidature générale)"]
+    A3["Saisir identité et période<br/>(début + durée)"]
+    A4["Déposer le CV (PDF/DOCX)"]
+    A5["Corriger la saisie"]
+    A6["Recevoir la confirmation"]
+  end
+
+  subgraph SW2["Système — API"]
+    B1["Valider le formulaire"]
+    B2{"données valides ?"}
+    B3["Téléverser le CV vers le stockage"]
+    B4["Créer candidat<br/>(ou réutiliser celui de même email)"]
+    B5["Créer la candidature<br/>(status = soumise)"]
+    B9["status candidature = affectée"]
+    B10["La place est réservée sur [début, fin]"]
+  end
+
+  subgraph SW3["Système — Analyse (arrière-plan)"]
+    C1["Extraire le texte du CV"]
+    C2{"texte exploitable ?"}
+    C3["status = échec"]
+    C4{"CV déjà analysé ?"}
+    C5["Lire le profil en cache"]
+    C6["Appeler le LLM (Groq)"]
+    C7["Mettre en cache le résultat"]
+    C8["Enregistrer compétences,<br/>formation, expérience"]
+    C9["status = analysée"]
+    C10["Calculer le meilleur score"]
+  end
+
+  subgraph SW4["Recruteur"]
+    D1["Consulter les candidatures"]
+    D2["Lancer l'affectation IA"]
+    D5["Examiner les propositions<br/>et le détail des scores"]
+    D6{"affectation retenue ?"}
+    D7["Rejeter"]
+    D8["Confirmer l'affectation"]
+    D9["Consulter « Offres réservées »"]
+  end
+
+  subgraph SW5["Système — Affectation"]
+    E1["Scorer tous les couples<br/>(candidat, offre)"]
+    E2["Résoudre l'affectation globale<br/>(algorithme hongrois)"]
+    E3["Proposer les affectations"]
+  end
+
+  A1 --> A2 --> A3 --> A4 --> B1 --> B2
+  B2 -- non --> A5
+  A5 --> A3
+  B2 -- oui --> B3 --> B4 --> B5 --> FORK
+
+  FORK[" "]:::fork
+  FORK --> A6
+  FORK --> C1
+
+  C1 --> C2
+  C2 -- non --> C3 --> STOP1(((" ")))
+  C2 -- oui --> C4
+  C4 -- oui --> C5 --> C8
+  C4 -- non --> C6 --> C7 --> C8
+  C8 --> C9 --> C10 --> D1
+
+  D1 --> D2 --> E1 --> E2 --> E3 --> D5 --> D6
+  D6 -- non --> D7 --> STOP2(((" ")))
+  D6 -- oui --> D8 --> B9 --> B10 --> D9 --> STOP3(((" ")))

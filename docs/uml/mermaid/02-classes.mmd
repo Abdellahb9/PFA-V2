@@ -1,0 +1,172 @@
+%% Diagramme de classes du domaine.
+%% Conventions du cours : pas d'attribut typé par une classe du diagramme
+%% (association à la place), attribut dérivé préfixé /, contraintes en note.
+classDiagram
+  direction LR
+
+  class Profil {
+    +uuid id
+    +string full_name
+    +Role role
+    +boolean is_active
+    +Date created_at
+  }
+
+  class Role {
+    <<enumeration>>
+    admin
+    recruiter
+    viewer
+    candidate
+  }
+
+  class Candidat {
+    +int id
+    +string first_name
+    +string last_name
+    +string email
+    +string phone
+    +string education_level
+    +string field_of_study
+    +string university
+    +real years_experience
+    +string cv_text
+    +/nom_complet() string
+  }
+
+  class Competence {
+    +int id
+    +string name
+    +string normalized
+    +CategorieCompetence category
+  }
+
+  class CategorieCompetence {
+    <<enumeration>>
+    technical
+    soft
+    language
+    domain
+  }
+
+  class Departement {
+    +int id
+    +string name
+    +string code
+    +string supervisor_name
+    +int capacity
+    +/taux_remplissage() real
+  }
+
+  class OffreStage {
+    +int id
+    +string title
+    +string description
+    +string field
+    +int slots
+    +string min_education_level
+    +StatutOffre status
+  }
+
+  class StatutOffre {
+    <<enumeration>>
+    open
+    closed
+    draft
+  }
+
+  class Candidature {
+    +int id
+    +StatutCandidature status
+    +string motivation
+    +real match_score
+    +Date start_date
+    +int duration_months
+    +/Date end_date
+    +Date parsed_at
+    +Date created_at
+  }
+
+  class StatutCandidature {
+    <<enumeration>>
+    submitted
+    parsing
+    parsed
+    under_review
+    assigned
+    rejected
+    failed
+  }
+
+  class Document {
+    +int id
+    +TypeDocument kind
+    +string filename
+    +string storage_path
+    +string content_type
+    +int size
+  }
+
+  class TypeDocument {
+    <<enumeration>>
+    cv
+    cover_letter
+    transcript
+    other
+  }
+
+  class SessionMatching {
+    +int id
+    +string algorithm
+    +int total_candidates
+    +int total_slots
+    +/int assignments_count
+    +/real average_score
+    +Date created_at
+  }
+
+  class Affectation {
+    +int id
+    +real match_score
+    +json score_breakdown
+    +StatutAffectation status
+    +string decided_by
+    +Date created_at
+  }
+
+  class StatutAffectation {
+    <<enumeration>>
+    proposed
+    confirmed
+    rejected
+  }
+
+  class ChunkDocument {
+    +int id
+    +string source_document
+    +int chunk_index
+    +string chunk_text
+    +/tsvector search_vector
+  }
+
+  Profil "1" -- "0..1" Candidat : compte
+  Profil ..> Role
+  Candidat "1" -- "*" Candidature : dépose
+  OffreStage "0..1" -- "*" Candidature : vise
+  Candidature "1" *-- "*" Document : pièces jointes
+  Departement "1" -- "*" OffreStage : propose
+  OffreStage "*" -- "*" Competence : requiert
+  Candidat "*" -- "*" Competence : maîtrise
+  Candidature "1" -- "0..1" Affectation : donne lieu à
+  Candidat "1" -- "*" Affectation
+  OffreStage "1" -- "*" Affectation : occupe une place de
+  SessionMatching "0..1" -- "*" Affectation : produit
+  Candidature ..> StatutCandidature
+  Affectation ..> StatutAffectation
+  OffreStage ..> StatutOffre
+  Document ..> TypeDocument
+  Competence ..> CategorieCompetence
+
+  note for Candidature "end_date = start_date + duration_months (dérivé, trigger Postgres)<br/>Une candidature a au plus une affectation non rejetée"
+  note for Affectation "Une affectation confirmée réserve une place de l'offre<br/>sur la période de la candidature. Nb de confirmées &lt;= slots"
+  note for Competence "normalized porte la forme canonique produite par le LLM :<br/>c'est elle qui sert à l'appariement, jamais le libellé brut"

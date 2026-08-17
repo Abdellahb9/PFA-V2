@@ -1,0 +1,91 @@
+@startuml 03-sequence-postuler
+' Réalisation du cas d'utilisation « Postuler à une offre » — niveau CONCEPTION.
+' Le cours distingue deux niveaux : en analyse le système est une boîte noire,
+' en conception les messages sont les opérations du diagramme de classes.
+' Particularité ici : le CV transite directement vers le stockage via une URL
+' signée — il ne passe jamais par la fonction serverless (limite de payload).
+
+title Postuler à une offre — niveau conception
+
+actor "Visiteur" as V
+participant "portail : SPA" as SPA
+participant "createUploadUrl\n: Fonction" as UP
+participant "stockage : Supabase Storage" as ST
+participant "submitApplication\n: Fonction" as SUB
+database "bd : Supabase Postgres" as DB
+participant "analyse : Fonction\n(arrière-plan)" as BG
+
+V -> SPA : saisir(identité, période, CV)
+activate SPA
+
+SPA -> SPA : valider(schéma Zod)
+
+alt formulaire invalide
+  SPA --> V : messages d'erreur
+else formulaire valide
+
+  SPA -> UP : creerUrlSignee(nomFichier)
+  activate UP
+  UP -> ST : creerUrlUpload(chemin)
+  activate ST
+  ST --> UP : url, token
+  deactivate ST
+  UP --> SPA : {chemin, token}
+  deactivate UP
+
+  SPA -> ST : televerser(url, token, fichierCV)
+  activate ST
+  ST --> SPA : ok
+  deactivate ST
+
+  SPA -> SUB : soumettre(identité, offre, période, cv{chemin})
+  activate SUB
+
+  SUB -> ST : verifierObjet(chemin)
+  activate ST
+  ST --> SUB : métadonnées(taille)
+  deactivate ST
+
+  alt fichier absent ou > 10 Mo
+    SUB --> SPA : 400 / 413
+  else fichier conforme
+
+    SUB -> DB : chercherCandidat(email)
+    activate DB
+    DB --> SUB : candidat ou null
+    deactivate DB
+
+    alt candidat inconnu
+      SUB -> DB : creerCandidat(identité)
+      activate DB
+      DB --> SUB : candidat
+      deactivate DB
+    end
+
+    SUB -> DB : creerCandidature(candidat, offre, start_date, duration_months)
+    activate DB
+    note right of DB
+      Le trigger calcule end_date
+      = start_date + duration_months
+    end note
+    DB --> SUB : candidature{id, status = submitted}
+    deactivate DB
+
+    SUB -> DB : creerDocument(candidature, kind = cv, chemin)
+    activate DB
+    DB --> SUB : document
+    deactivate DB
+
+    SUB ->> BG : declencherAnalyse(candidature.id)
+    note right of BG : message **asynchrone** :\nla réponse ne l'attend pas
+    SUB --> SPA : 201 {id, status}
+    deactivate SUB
+
+    SPA --> V : « Candidature envoyée »
+  end
+end
+deactivate SPA
+
+ref over BG, DB : Analyser le CV\n(voir 04-sequence-analyse-cv)
+
+@enduml

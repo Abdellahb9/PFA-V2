@@ -1,0 +1,109 @@
+@startuml 08-composants
+' Diagramme de composants — architecture logique et statique.
+' Stéréotypes du cours : « executable », « library », « file », « table ».
+' Interface **fournie** = réalisation (rond) ; **requise** = dépendance (arc).
+
+title Architecture logique — Assistant IA de gestion des stages
+
+skinparam componentStyle rectangle
+
+package "Navigateur" {
+  component "SPA React" as SPA <<executable>>
+  component "AntD + thème" as ANTD <<library>>
+  component "React Query" as RQ <<library>>
+  component "supabase-js" as SBJS <<library>>
+  SPA ..> ANTD
+  SPA ..> RQ
+  SPA ..> SBJS
+}
+
+package "API serverless" {
+  component "Routeur /api/*" as ROUTER <<executable>>
+
+  package "Endpoints" {
+    component "applications" as C_APP <<executable>>
+    component "offers / departments" as C_OFF <<executable>>
+    component "submit-application" as C_SUB <<executable>>
+    component "analyze-application\n(arrière-plan)" as C_BG <<executable>>
+    component "matching-run" as C_MR <<executable>>
+    component "assignments" as C_AS <<executable>>
+    component "bookings" as C_BK <<executable>>
+    component "assistant (RAG)" as C_RAG <<executable>>
+    component "capacity-forecast" as C_CF <<executable>>
+    component "dashboard" as C_DASH <<executable>>
+  }
+
+  package "Noyau partagé (_shared)" {
+    component "auth" as L_AUTH <<library>>
+    component "db / supabase" as L_DB <<library>>
+    component "cv + cv-cache" as L_CV <<library>>
+    component "skills" as L_SK <<library>>
+    component "scoring" as L_SC <<library>>
+    component "hungarian" as L_HU <<library>>
+    component "rag" as L_RAG <<library>>
+    component "xgb-predict" as L_XGB <<library>>
+    artifact "forecast_model.json" as F_MODEL <<file>>
+  }
+}
+
+cloud "Services externes" {
+  component "Supabase Auth" as S_AUTH
+  component "Supabase Postgres" as S_DB
+  component "Supabase Storage" as S_ST
+  component "Groq API" as GROQ
+}
+
+' --- Interfaces fournies / requises ---
+interface "REST /api" as I_API
+SPA ..> I_API : <<requires>>
+I_API - ROUTER
+
+ROUTER --> C_APP
+ROUTER --> C_OFF
+ROUTER --> C_SUB
+ROUTER --> C_BG
+ROUTER --> C_MR
+ROUTER --> C_AS
+ROUTER --> C_BK
+ROUTER --> C_RAG
+ROUTER --> C_CF
+ROUTER --> C_DASH
+
+C_APP ..> L_AUTH
+C_APP ..> L_DB
+C_SUB ..> L_DB
+C_BG ..> L_CV
+C_BG ..> L_SK
+C_BG ..> L_SC
+C_MR ..> L_SC
+C_MR ..> L_HU
+C_AS ..> L_SC
+C_BK ..> L_DB
+C_RAG ..> L_RAG
+C_CF ..> L_XGB
+L_XGB ..> F_MODEL : lit
+C_DASH ..> L_DB
+
+L_AUTH ..> S_AUTH
+L_DB ..> S_DB
+L_CV ..> S_ST
+L_CV ..> GROQ
+L_RAG ..> GROQ
+L_RAG ..> S_DB
+SBJS ..> S_AUTH
+SBJS ..> S_ST : URL signée
+
+note right of L_XGB
+  Inférence XGBoost en TypeScript pur :
+  le modèle est entraîné hors ligne en
+  Python puis exporté en JSON.
+  Aucune dépendance native à l'exécution.
+end note
+
+note bottom of L_SC
+  `scoring` a un jumeau Python côté backend
+  FastAPI. Les deux sont vérifiés contre le
+  **même jeu d'essai** (shared/fixtures).
+end note
+
+@enduml

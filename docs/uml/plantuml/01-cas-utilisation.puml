@@ -1,0 +1,91 @@
+@startuml 01-cas-utilisation
+' Diagramme de cas d'utilisation — Assistant IA de gestion des stages (OCP).
+' Généralisation de rôle : un Candidat fait tout ce que fait un Visiteur,
+' un Administrateur tout ce que fait un Recruteur (cours « Cas d'utilisation »).
+' « includes » = sous-scénario obligatoire et factorisé.
+' « extends »  = sous-scénario optionnel, déclenché au cours du cas étendu.
+
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "Visiteur" as Visiteur
+actor "Candidat" as Candidat
+actor "Recruteur" as Recruteur
+actor "Administrateur" as Admin
+
+Visiteur <|-- Candidat
+Recruteur <|-- Admin
+
+rectangle "Assistant IA — Gestion des stages" {
+
+  ' --- Espace public / candidat ---
+  usecase "Consulter les offres" as UC_Offres
+  usecase "Postuler à une offre" as UC_Postuler
+  usecase "Déposer son CV" as UC_CV
+  usecase "Préciser la période de stage" as UC_Periode
+  usecase "Créer un compte" as UC_Inscription
+  usecase "Suivre ses candidatures" as UC_Suivi
+
+  ' --- Espace personnel (staff) ---
+  usecase "S'authentifier" as UC_Auth
+  usecase "Gérer les candidatures" as UC_GestCand
+  usecase "Consulter le CV" as UC_VoirCV
+  usecase "Relancer l'analyse du CV" as UC_Reanalyse
+  usecase "Importer des CV en lot" as UC_Bulk
+  usecase "Gérer les offres" as UC_GestOffres
+  usecase "Gérer les départements" as UC_GestDept
+  usecase "Consulter le tableau de bord" as UC_Dashboard
+  usecase "Lancer l'affectation IA" as UC_Matching
+  usecase "Valider une affectation" as UC_Valider
+  usecase "Consulter les offres réservées" as UC_Reservations
+  usecase "Interroger l'assistant RAG" as UC_RAG
+  usecase "Gérer la base documentaire" as UC_KB
+  usecase "Prévoir la capacité (XGBoost)" as UC_Forecast
+
+  ' --- Administration ---
+  usecase "Gérer les utilisateurs" as UC_Users
+}
+
+' Acteurs -> cas
+Visiteur --> UC_Offres
+Visiteur --> UC_Postuler
+Visiteur --> UC_Inscription
+Candidat --> UC_Suivi
+
+Recruteur --> UC_GestCand
+Recruteur --> UC_Bulk
+Recruteur --> UC_GestOffres
+Recruteur --> UC_GestDept
+Recruteur --> UC_Dashboard
+Recruteur --> UC_Matching
+Recruteur --> UC_Valider
+Recruteur --> UC_Reservations
+Recruteur --> UC_RAG
+Recruteur --> UC_KB
+Recruteur --> UC_Forecast
+Admin --> UC_Users
+
+' Relations entre cas
+UC_Postuler ..> UC_CV : <<includes>>
+UC_Postuler ..> UC_Periode : <<includes>>
+UC_Suivi ..> UC_Auth : <<includes>>
+UC_GestCand ..> UC_Auth : <<includes>>
+UC_Matching ..> UC_Auth : <<includes>>
+UC_Users ..> UC_Auth : <<includes>>
+UC_RAG ..> UC_Auth : <<includes>>
+
+UC_VoirCV ..> UC_GestCand : <<extends>>
+UC_Reanalyse ..> UC_GestCand : <<extends>>
+UC_Valider ..> UC_Matching : <<extends>>
+
+note bottom of UC_Postuler
+  Scénario nominal : le visiteur choisit une offre, saisit son identité,
+  la période souhaitée (début + durée), dépose son CV, puis valide.
+  Le système confirme la réception et déclenche l'analyse en arrière-plan.
+
+  Alternative : aucune offre choisie -> candidature générale,
+  évaluée contre toutes les offres ouvertes.
+end note
+
+@enduml

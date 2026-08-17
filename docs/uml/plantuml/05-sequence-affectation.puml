@@ -1,0 +1,86 @@
+@startuml 05-sequence-affectation
+' Affectation IA : scoring de tous les couples (candidat, offre) puis
+' résolution globale par l'algorithme hongrois, enfin validation humaine.
+' L'IA **propose**, le recruteur **décide** — la confirmation est ce qui
+' réserve réellement la place (cf. « Offres réservées »).
+
+title Lancer l'affectation IA puis valider — niveau conception
+
+actor "Recruteur" as R
+participant "matching : SPA" as SPA
+participant "matchingRun\n: Fonction" as MR
+database "bd : Postgres" as DB
+participant "scoring : Scoring" as SC
+participant "hongrois : Hungarian" as HU
+participant "assignments\n: Fonction" as AS
+
+R -> SPA : lancerAffectation(poids{compétences, formation}, min_score)
+activate SPA
+SPA -> MR : executer(poids, persist, min_score)
+activate MR
+
+MR -> DB : profilsCandidats()
+activate DB
+DB --> MR : candidats analysés
+deactivate DB
+MR -> DB : profilsOffres()
+activate DB
+DB --> MR : offres ouvertes (avec places)
+deactivate DB
+
+loop pour chaque couple (candidat, offre)
+  MR -> SC : compositeScore(candidat, offre, poids)
+  activate SC
+  SC --> MR : {score, détail}
+  deactivate SC
+end
+
+MR -> HU : resoudre(matriceCoûts)
+activate HU
+note right of HU
+  Une colonne par **place** (slots),
+  pas par offre : une offre à 3 places
+  peut recevoir 3 candidats.
+  Optimum **global**, pas glouton.
+end note
+HU --> MR : appariement optimal
+deactivate HU
+
+alt persist = true
+  MR -> DB : creerSession(algorithme, statistiques)
+  activate DB
+  DB --> MR : session
+  deactivate DB
+  loop pour chaque affectation retenue
+    MR -> DB : creerAffectation(candidature, offre, score, détail, status = proposed)
+  end
+end
+
+MR --> SPA : résultats{affectations, scores, détails}
+deactivate MR
+SPA --> R : tableau des propositions + radar des scores
+deactivate SPA
+
+== Validation humaine ==
+
+R -> SPA : confirmer(affectation)
+activate SPA
+SPA -> AS : majStatut(affectation, confirmed)
+activate AS
+AS -> DB : majAffectation(affectation, confirmed, décideur)
+activate DB
+DB --> AS : affectation
+deactivate DB
+AS -> DB : majStatut(candidature, assigned)
+AS --> SPA : affectation confirmée
+deactivate AS
+SPA --> R : place réservée sur la période demandée
+deactivate SPA
+
+note over DB
+  À partir d'ici la place apparaît dans
+  « Offres réservées », groupée par mois
+  de début de stage.
+end note
+
+@enduml

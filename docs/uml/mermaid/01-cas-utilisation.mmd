@@ -1,0 +1,67 @@
+%% Cas d'utilisation — Mermaid n'a pas de diagramme de cas d'utilisation natif :
+%% le système est rendu par un sous-graphe (limites du système) et les acteurs
+%% par des noeuds à gauche. La version normative est en PlantUML.
+flowchart LR
+  classDef acteur fill:#fff,stroke:#333,stroke-width:2px,color:#000
+  classDef uc fill:#f6fbe9,stroke:#76B900,color:#000
+
+  V(("Visiteur")):::acteur
+  C(("Candidat")):::acteur
+  R(("Recruteur")):::acteur
+  A(("Administrateur")):::acteur
+
+  C -. "généralisation" .-> V
+  A -. "généralisation" .-> R
+
+  subgraph SYS["Assistant IA — Gestion des stages"]
+    direction TB
+    UC1(["Consulter les offres"]):::uc
+    UC2(["Postuler à une offre"]):::uc
+    UC3(["Déposer son CV"]):::uc
+    UC4(["Préciser la période de stage"]):::uc
+    UC5(["Créer un compte"]):::uc
+    UC6(["Suivre ses candidatures"]):::uc
+    UC7(["S'authentifier"]):::uc
+    UC8(["Gérer les candidatures"]):::uc
+    UC9(["Consulter le CV"]):::uc
+    UC10(["Relancer l'analyse du CV"]):::uc
+    UC11(["Importer des CV en lot"]):::uc
+    UC12(["Gérer les offres"]):::uc
+    UC13(["Gérer les départements"]):::uc
+    UC14(["Consulter le tableau de bord"]):::uc
+    UC15(["Lancer l'affectation IA"]):::uc
+    UC16(["Valider une affectation"]):::uc
+    UC17(["Consulter les offres réservées"]):::uc
+    UC18(["Interroger l'assistant RAG"]):::uc
+    UC19(["Gérer la base documentaire"]):::uc
+    UC20(["Prévoir la capacité"]):::uc
+    UC21(["Gérer les utilisateurs"]):::uc
+  end
+
+  V --- UC1
+  V --- UC2
+  V --- UC5
+  C --- UC6
+
+  R --- UC8
+  R --- UC11
+  R --- UC12
+  R --- UC13
+  R --- UC14
+  R --- UC15
+  R --- UC16
+  R --- UC17
+  R --- UC18
+  R --- UC19
+  R --- UC20
+  A --- UC21
+
+  UC2 -. "«includes»" .-> UC3
+  UC2 -. "«includes»" .-> UC4
+  UC6 -. "«includes»" .-> UC7
+  UC8 -. "«includes»" .-> UC7
+  UC15 -. "«includes»" .-> UC7
+  UC21 -. "«includes»" .-> UC7
+  UC9 -. "«extends»" .-> UC8
+  UC10 -. "«extends»" .-> UC8
+  UC16 -. "«extends»" .-> UC15

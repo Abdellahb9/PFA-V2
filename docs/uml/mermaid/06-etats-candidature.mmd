@@ -1,0 +1,54 @@
+%% États-transitions de la classe Candidature — niveau conception :
+%% les événements sont des appels d'opérations.
+%% Syntaxe du cours : événement [condition] / action
+stateDiagram-v2
+  direction TB
+
+  [*] --> Soumise : soumettre(identité, période, cv)
+
+  state "Soumise" as Soumise
+  state "En analyse" as EnAnalyse
+  state "Analysée" as Analysee
+  state "En revue" as EnRevue
+  state "Affectée" as Affectee
+  state "Rejetée" as Rejetee
+  state "Échec" as Echec
+
+  Soumise --> EnAnalyse : analyser()
+
+  EnAnalyse --> Analysee : [texte extrait et profil obtenu]
+  EnAnalyse --> Echec : [texte vide] / status = failed
+  EnAnalyse --> Echec : erreur(e) / status = failed
+
+  Analysee --> EnRevue : affecter(offre) / créer affectation (proposed)
+  EnRevue --> Affectee : confirmer(affectation)
+  EnRevue --> Analysee : rejeter(affectation)
+
+  Analysee --> Rejetee : rejeter()
+  EnRevue --> Rejetee : rejeter()
+
+  Echec --> EnAnalyse : relancerAnalyse()
+  Analysee --> EnAnalyse : relancerAnalyse()
+  Affectee --> EnAnalyse : relancerAnalyse()
+
+  Affectee --> [*] : supprimer() / purger le CV
+  Rejetee --> [*] : supprimer()
+
+  note right of EnAnalyse
+    Entry / status = parsing
+    Do / extraire le texte, appeler le LLM,
+    persister compétences et formation
+
+    Un CV déjà vu (même empreinte SHA-256)
+    traverse l'état sans appel au LLM.
+  end note
+
+  note right of Analysee
+    Entry / parsed_at = maintenant
+    Do / calculer le meilleur score
+  end note
+
+  note right of Affectee
+    C'est cet état qui matérialise la réservation
+    d'une place sur [start_date, end_date].
+  end note

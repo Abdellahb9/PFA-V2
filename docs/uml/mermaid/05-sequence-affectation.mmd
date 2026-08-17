@@ -1,0 +1,59 @@
+%% Affectation IA : scoring de tous les couples puis résolution globale
+%% (algorithme hongrois), enfin validation humaine.
+%% L'IA propose, le recruteur décide : la confirmation réserve la place.
+sequenceDiagram
+  autonumber
+  actor R as Recruteur
+  participant SPA as matching : SPA
+  participant MR as matchingRun : Fonction
+  participant DB as bd : Postgres
+  participant SC as scoring : Scoring
+  participant HU as hongrois : Hungarian
+  participant AS as assignments : Fonction
+
+  R->>SPA: lancerAffectation(poids, min_score)
+  activate SPA
+  SPA->>MR: executer(poids, persist, min_score)
+  activate MR
+
+  MR->>DB: profilsCandidats()
+  DB-->>MR: candidats analysés
+  MR->>DB: profilsOffres()
+  DB-->>MR: offres ouvertes (avec places)
+
+  loop pour chaque couple (candidat, offre)
+    MR->>SC: compositeScore(candidat, offre, poids)
+    SC-->>MR: score + détail
+  end
+
+  MR->>HU: resoudre(matriceCoûts)
+  Note right of HU: une colonne par place (slots),<br/>pas par offre — optimum global
+  HU-->>MR: appariement optimal
+
+  opt persist = true
+    MR->>DB: creerSession(algorithme, statistiques)
+    loop pour chaque affectation retenue
+      MR->>DB: creerAffectation(candidature, offre, score, proposed)
+    end
+  end
+
+  MR-->>SPA: résultats (affectations, scores, détails)
+  deactivate MR
+  SPA-->>R: tableau des propositions + radar
+  deactivate SPA
+
+  Note over R,AS: Validation humaine
+
+  R->>SPA: confirmer(affectation)
+  activate SPA
+  SPA->>AS: majStatut(affectation, confirmed)
+  activate AS
+  AS->>DB: majAffectation(affectation, confirmed, décideur)
+  DB-->>AS: affectation
+  AS->>DB: majStatut(candidature, assigned)
+  AS-->>SPA: affectation confirmée
+  deactivate AS
+  SPA-->>R: place réservée sur la période demandée
+  deactivate SPA
+
+  Note over DB: la place apparaît alors dans « Offres réservées »,<br/>groupée par mois de début de stage

@@ -1,0 +1,59 @@
+%% Réalisation du cas d'utilisation « Postuler à une offre » — conception.
+%% Le CV va directement au stockage via une URL signée : il ne traverse
+%% jamais la fonction serverless.
+sequenceDiagram
+  autonumber
+  actor V as Visiteur
+  participant SPA as portail : SPA
+  participant UP as createUploadUrl : Fonction
+  participant ST as stockage : Supabase Storage
+  participant SUB as submitApplication : Fonction
+  participant DB as bd : Postgres
+  participant BG as analyse : Fonction (arrière-plan)
+
+  V->>SPA: saisir(identité, période, CV)
+  activate SPA
+  SPA->>SPA: valider(schéma Zod)
+
+  alt formulaire invalide
+    SPA-->>V: messages d'erreur
+  else formulaire valide
+    SPA->>UP: creerUrlSignee(nomFichier)
+    activate UP
+    UP->>ST: creerUrlUpload(chemin)
+    ST-->>UP: url, token
+    UP-->>SPA: chemin, token
+    deactivate UP
+
+    SPA->>ST: televerser(url, token, fichierCV)
+    ST-->>SPA: ok
+
+    SPA->>SUB: soumettre(identité, offre, période, cv)
+    activate SUB
+    SUB->>ST: verifierObjet(chemin)
+    ST-->>SUB: métadonnées(taille)
+
+    alt fichier absent ou > 10 Mo
+      SUB-->>SPA: 400 / 413
+    else fichier conforme
+      SUB->>DB: chercherCandidat(email)
+      DB-->>SUB: candidat ou null
+
+      opt candidat inconnu
+        SUB->>DB: creerCandidat(identité)
+        DB-->>SUB: candidat
+      end
+
+      SUB->>DB: creerCandidature(candidat, offre, start_date, duration_months)
+      Note right of DB: le trigger calcule<br/>end_date = start_date + duration_months
+      DB-->>SUB: candidature (status = submitted)
+
+      SUB->>DB: creerDocument(candidature, cv, chemin)
+      SUB--)BG: declencherAnalyse(candidature.id)
+      Note right of BG: message asynchrone :<br/>la réponse ne l'attend pas
+      SUB-->>SPA: 201 (id, status)
+      deactivate SUB
+      SPA-->>V: « Candidature envoyée »
+    end
+  end
+  deactivate SPA

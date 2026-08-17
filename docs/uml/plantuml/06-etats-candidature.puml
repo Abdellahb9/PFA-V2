@@ -1,0 +1,67 @@
+@startuml 06-etats-candidature
+' Diagramme états-transitions de la classe Candidature.
+' Niveau CONCEPTION : les événements sont des appels d'opérations
+' (cours « États-transitions », p. 12).
+' Syntaxe : événement [condition] / action
+
+title Cycle de vie d'une Candidature
+
+[*] --> Soumise : soumettre(identité, période, cv) /\ncréer document
+
+state Soumise {
+  Soumise : Entry / déclencher l'analyse (asynchrone)
+}
+
+state EnAnalyse as "En analyse" {
+  EnAnalyse : Entry / status = parsing
+  EnAnalyse : Do / extraire le texte, appeler le LLM,\npersister compétences et formation
+}
+
+state Analysee as "Analysée" {
+  Analysee : Entry / parsed_at = maintenant
+  Analysee : Do / calculer le meilleur score
+}
+
+state EnRevue as "En revue" {
+  EnRevue : Entry / une affectation est proposée
+}
+
+state Echec as "Échec" {
+  Echec : Entry / journaliser la cause
+}
+
+Soumise --> EnAnalyse : analyser()
+EnAnalyse --> Analysee : [texte extrait et profil obtenu]
+EnAnalyse --> Echec : [texte vide] / status = failed
+EnAnalyse --> Echec : erreur(e) / status = failed
+
+Analysee --> EnRevue : affecter(offre) / créer affectation (proposed)
+EnRevue --> Affectee : confirmer(affectation)
+EnRevue --> Analysee : rejeter(affectation)
+
+Analysee --> Rejetee : rejeter()
+EnRevue --> Rejetee : rejeter()
+
+Echec --> EnAnalyse : relancerAnalyse()
+Analysee --> EnAnalyse : relancerAnalyse()
+Affectee --> EnAnalyse : relancerAnalyse()
+
+state Affectee as "Affectée"
+state Rejetee as "Rejetée"
+
+Affectee --> [*] : supprimer() /\nsupprimer le CV du stockage
+Rejetee --> [*] : supprimer()
+
+note right of EnAnalyse
+  Un CV déjà vu (même empreinte SHA-256)
+  est servi par le cache : l'état est
+  traversé sans appel au LLM.
+end note
+
+note bottom of Affectee
+  C'est **cet** état qui matérialise la
+  réservation d'une place sur la période
+  [start_date, end_date] de la candidature.
+end note
+
+@enduml
