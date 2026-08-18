@@ -21,12 +21,21 @@ import { useAppSelector } from "@/store";
 import SkeletonTable from "@/components/SkeletonTable";
 import type { AdminUser } from "@/api/types";
 
-const ROLE_OPTIONS = [
-  { value: "candidate", label: "Candidat" },
-  { value: "viewer", label: "Lecteur" },
-  { value: "recruiter", label: "Recruteur" },
-  { value: "admin", label: "Administrateur" },
-];
+// Libellés de TOUS les rôles que la base peut contenir : des comptes portent
+// encore « recruiter », leur ligne doit continuer à s'afficher correctement.
+const ROLE_LABELS: Record<string, string> = {
+  candidate: "Candidat",
+  viewer: "Lecteur",
+  recruiter: "Recruteur",
+  admin: "Administrateur",
+};
+
+// Rôles réellement attribuables depuis l'interface. Lecteur et Recruteur en
+// sont retirés : ils restent acceptés par l'API pour les comptes existants.
+const ASSIGNABLE_ROLES = ["candidate", "admin"] as const;
+
+const roleOptions = (values: readonly string[]) =>
+  values.map((value) => ({ value, label: ROLE_LABELS[value] ?? value }));
 function fmtDate(s: string | null) {
   if (!s) return "—";
   return new Date(s).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
@@ -96,7 +105,11 @@ export default function UsersPage() {
             value={u.role}
             style={{ width: 150 }}
             disabled={u.id === me?.id}
-            options={ROLE_OPTIONS}
+            options={roleOptions(
+              ASSIGNABLE_ROLES.includes(u.role as (typeof ASSIGNABLE_ROLES)[number])
+                ? ASSIGNABLE_ROLES
+                : [...ASSIGNABLE_ROLES, u.role],
+            )}
             onChange={(r) => onRole(u, r)}
           />
         </Tooltip>
@@ -171,7 +184,7 @@ export default function UsersPage() {
         confirmLoading={create.isPending}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" initialValues={{ role: "recruiter" }}>
+        <Form form={form} layout="vertical" initialValues={{ role: "admin" }}>
           <Form.Item name="full_name" label="Nom complet" rules={[{ required: true }]}>
             <Input placeholder="Nom Prénom" />
           </Form.Item>
@@ -186,9 +199,7 @@ export default function UsersPage() {
             <Input.Password placeholder="••••••••" />
           </Form.Item>
           <Form.Item name="role" label="Rôle" rules={[{ required: true }]}>
-            <Select
-              options={ROLE_OPTIONS.filter((o) => o.value !== "candidate")}
-            />
+            <Select options={roleOptions(ASSIGNABLE_ROLES.filter((r) => r !== "candidate"))} />
           </Form.Item>
         </Form>
       </Modal>
