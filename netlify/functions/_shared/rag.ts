@@ -9,7 +9,7 @@
 // templates — the assistant stays functional without any LLM key.
 import Groq from "groq-sdk";
 import { admin } from "./supabase";
-import { groqEnabled } from "./groq";
+import { ASSISTANT_MODEL, groqEnabled } from "./groq";
 
 export type Intent = "candidate_search" | "matching_explanation" | "policy_qa";
 export type Lang = "fr" | "en";
@@ -66,7 +66,7 @@ export async function classifyIntent(query: string, assignmentId?: number | null
     try {
       const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
       const res = await client.chat.completions.create({
-        model: process.env.GROQ_MODEL ?? "llama-3.1-8b-instant",
+        model: ASSISTANT_MODEL,
         temperature: 0,
         messages: [{ role: "user", content: CLASSIFY_PROMPT(query) }],
       });
@@ -433,7 +433,7 @@ export async function generateAnswer(
     try {
       const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
       const res = await client.chat.completions.create({
-        model: process.env.GROQ_MODEL ?? "llama-3.1-8b-instant",
+        model: ASSISTANT_MODEL,
         temperature: 0,
         messages: [
           { role: "system", content: GEN_SYSTEM },

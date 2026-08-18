@@ -34,7 +34,7 @@ interface Route {
 // Order matters: most specific patterns first.
 const routes: Route[] = [
   { re: /^\/api\/assistant\/documents\/([^/]+)\/?$/, fn: assistant, keys: ["name"] },
-  { re: /^\/api\/assistant\/(?:query|documents)\/?$/, fn: assistant },
+  { re: /^\/api\/assistant\/(?:chat|query|documents)\/?$/, fn: assistant },
 
   { re: /^\/api\/applications\/([^/]+)\/([^/]+)\/?$/, fn: applications, keys: ["id", "action"] },
   { re: /^\/api\/applications\/([^/]+)\/?$/, fn: applications, keys: ["id"] },
@@ -146,9 +146,23 @@ export default async function nodeHandler(
 ): Promise<void> {
   try {
     const response = await webHandler(await nodeToRequest(req));
-    res.statusCode = response.status;
     response.headers.forEach((value, key) => res.setHeader(key, value));
-    res.end(Buffer.from(await response.arrayBuffer()));
+    // Écrire les en-têtes AVANT de pomper le corps : sans cela le premier
+    // événement SSE ne part qu'à la fin, et le flux perd tout son intérêt.
+    res.writeHead(response.status);
+
+    if (response.body) {
+      const reader = response.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(Buffer.from(value));
+        // Node bufferise par défaut ; flush() existe quand la compression est
+        // active et doit être appelé pour que le client reçoive tout de suite.
+        (res as ServerResponse & { flush?: () => void }).flush?.();
+      }
+    }
+    res.end();
   } catch (e) {
     res.statusCode = 500;
     res.setHeader("content-type", "application/json");

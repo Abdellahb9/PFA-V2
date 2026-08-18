@@ -32,6 +32,14 @@ CV:
 ${cv.slice(0, 6000)}
 """`;
 
+// Groq retires model ids without notice: llama-3.1-8b-instant started
+// returning HTTP 404, which silently disabled CV extraction, intent
+// classification and answer generation (each call is caught and falls back).
+// Both ids are overridable so a retirement is a config change, not a deploy.
+export const ASSISTANT_MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-120b";
+export const EXTRACT_MODEL =
+  process.env.GROQ_EXTRACT_MODEL ?? process.env.GROQ_MODEL ?? "openai/gpt-oss-20b";
+
 export function groqEnabled(): boolean {
   return Boolean(process.env.GROQ_API_KEY);
 }
@@ -41,7 +49,7 @@ export async function extractProfile(cvText: string): Promise<ExtractedProfile |
   try {
     const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
     const res = await client.chat.completions.create({
-      model: process.env.GROQ_MODEL ?? "llama-3.1-8b-instant",
+      model: EXTRACT_MODEL,
       temperature: 0,
       response_format: { type: "json_object" },
       messages: [

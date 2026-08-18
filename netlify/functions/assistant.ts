@@ -7,6 +7,7 @@ import { admin } from "./_shared/supabase";
 import { requireStaff, requireUser } from "./_shared/auth";
 import { json, fail, noContent, methodNotAllowed, readBody } from "./_shared/http";
 import { extractCvText } from "./_shared/cv";
+import { runAgent, sanitizeHistory } from "./_shared/agent";
 import {
   classifyIntent,
   detectLanguage,
@@ -19,8 +20,53 @@ import {
 } from "./_shared/rag";
 
 export const config = {
-  path: ["/api/assistant/query", "/api/assistant/documents", "/api/assistant/documents/:name"],
+  path: [
+    "/api/assistant/chat",
+    "/api/assistant/query",
+    "/api/assistant/documents",
+    "/api/assistant/documents/:name",
+  ],
 };
+
+// Conversation en flux (SSE). Chaque événement est une ligne `data: {json}`.
+// Le format one-shot /query est conservé pour compatibilité.
+async function handleChat(req: Request): Promise<Response> {
+  const body = await readBody(req);
+  const history = sanitizeHistory(body.messages);
+  if (!history.length) return fail("Conversation vide");
+  if (history[history.length - 1].role !== "user") {
+    return fail("Le dernier message doit venir de l'utilisateur");
+  }
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: unknown) =>
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      try {
+        for await (const event of runAgent(history)) send(event);
+      } catch (err) {
+        send({
+          type: "error",
+          message: err instanceof Error ? err.message : "Erreur de l'assistant",
+        });
+        send({ type: "done" });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      // Empêche la bufferisation par un proxy intermédiaire.
+      "x-accel-buffering": "no",
+    },
+  });
+}
 
 async function handleQuery(req: Request): Promise<Response> {
   const body = await readBody(req);
@@ -121,6 +167,13 @@ async function deleteDocument(name: string): Promise<Response> {
 
 export default async (req: Request, ctx: { params?: Record<string, string> }): Promise<Response> => {
   const { pathname } = new URL(req.url);
+
+  if (pathname.endsWith("/chat")) {
+    const user = await requireUser(req);
+    if (user instanceof Response) return user;
+    if (req.method !== "POST") return methodNotAllowed();
+    return handleChat(req);
+  }
 
   if (pathname.endsWith("/query")) {
     const user = await requireUser(req);

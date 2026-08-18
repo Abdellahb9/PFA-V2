@@ -1,6 +1,8 @@
-// Assistant RAG page: chat-style Q&A over the three skills (candidate search,
-// score explanation, policy documents) + knowledge-base management (staff).
-import { useRef, useState } from "react";
+// Assistant RAG : conversation en flux avec un agent à outils, plus la
+// gestion de la base documentaire (staff). L'agent choisit lui-même quel outil
+// appeler et tient compte des tours précédents — « et son université ? » porte
+// sur le candidat dont on vient de parler.
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Button,
@@ -9,7 +11,6 @@ import {
   Collapse,
   Empty,
   Input,
-  InputNumber,
   List,
   Popconfirm,
   Progress,
@@ -31,139 +32,201 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import {
-  useAssistantQuery,
   useDeleteKnowledgeDocument,
   useIngestKnowledgeDocument,
   useKnowledgeDocuments,
 } from "@/api/hooks";
 import { apiErrorMessage } from "@/api/client";
+import { streamChat, TOOL_LABELS } from "@/api/chat";
+import type { AgentEvent, ChatMessage } from "@/api/chat";
 import type {
   AssistantCandidateSource,
   AssistantChunkSource,
-  AssistantIntent,
-  AssistantResponse,
   AssistantSource,
 } from "@/api/types";
 
 const { Text, Paragraph } = Typography;
 
-const INTENT_LABELS: Record<AssistantIntent, { label: string; color: string }> = {
-  candidate_search: { label: "Recherche de candidats", color: "blue" },
-  matching_explanation: { label: "Explication de score", color: "gold" },
-  policy_qa: { label: "Documents & politique", color: "green" },
-};
 
 // The assistant answers in the language of the question (FR / EN).
 const EXAMPLES = [
-  "Trouve-moi des candidats Python avec au moins 2 ans d'expérience",
-  "Quelle est la durée maximale d'un stage ?",
+  "Trouve-moi des candidats qui savent faire du Python",
+  "Quelles offres de stage sont ouvertes ?",
+  "Qui est en stage en septembre ?",
   "What is the internship remuneration policy?",
 ];
 
-interface ChatTurn {
-  question: string;
-  response: AssistantResponse;
+/** Un tour affiché : le texte diffusé + les outils utilisés + les preuves. */
+interface Turn {
+  role: "user" | "assistant";
+  content: string;
+  tools?: string[];
+  sources?: AssistantSource[];
+  streaming?: boolean;
 }
 
 // Render the retrieved evidence appropriately for each skill.
-function Sources({ intent, sources }: { intent: AssistantIntent; sources: AssistantSource[] }) {
+// L'agent peut mélanger les sources dans un même tour : on les regroupe par
+// type au lieu de se fier à une intention unique.
+function Sources({ sources }: { sources: AssistantSource[] }) {
   if (!sources.length) return null;
+  const candidates = sources.filter((s) => (s as { type?: string }).type === "candidate");
+  const chunks = sources.filter((s) => (s as { type?: string }).type === "doc_chunk");
 
-  if (intent === "candidate_search") {
-    const rows = sources as AssistantCandidateSource[];
-    return (
-      <Table<AssistantCandidateSource>
-        rowKey="candidate_id"
-        dataSource={rows}
-        pagination={false}
-        size="small"
-        style={{ marginTop: 12 }}
-        columns={[
-          { title: "Candidat", dataIndex: "name", key: "name" },
-          { title: "Formation", dataIndex: "education_level", key: "education_level" },
-          {
-            title: "Expérience",
-            dataIndex: "years_experience",
-            key: "years_experience",
-            render: (v: number) => `${v} an${v > 1 ? "s" : ""}`,
-          },
-          {
-            title: "Compétences",
-            dataIndex: "skills",
-            key: "skills",
-            render: (skills: string[]) => (
-              <Space size={4} wrap>
-                {skills.slice(0, 6).map((s) => (
-                  <Tag key={s}>{s}</Tag>
-                ))}
-                {skills.length > 6 && <Tag>+{skills.length - 6}</Tag>}
-              </Space>
-            ),
-          },
-          {
-            title: "Pertinence",
-            dataIndex: "similarity",
-            key: "similarity",
-            render: (v: number) => (
-              <Progress percent={Math.round(v * 100)} size="small" style={{ width: 90 }} />
-            ),
-          },
-        ]}
-      />
-    );
-  }
+  return (
+    <>
+      <CandidateSources rows={candidates as AssistantCandidateSource[]} />
+      <ChunkSources rows={chunks as AssistantChunkSource[]} />
+    </>
+  );
+}
 
-  if (intent === "policy_qa") {
-    const chunks = sources as AssistantChunkSource[];
-    return (
-      <Collapse
-        size="small"
-        style={{ marginTop: 12 }}
-        items={chunks.map((c, i) => ({
-          key: `${c.source_document}-${c.chunk_index}-${i}`,
-          label: (
-            <Space size={6} wrap>
-              <FilePdfOutlined />
-              <strong>{c.source_document}</strong>
-              <Tag>extrait #{c.chunk_index + 1}</Tag>
-              <Tag color="green">pertinence {Math.round(c.similarity * 100)}%</Tag>
+function CandidateSources({ rows }: { rows: AssistantCandidateSource[] }) {
+  if (!rows.length) return null;
+  return (
+    <Table<AssistantCandidateSource>
+      rowKey="candidate_id"
+      dataSource={rows}
+      pagination={false}
+      size="small"
+      style={{ marginTop: 12 }}
+      columns={[
+        { title: "Candidat", dataIndex: "name", key: "name" },
+        { title: "Formation", dataIndex: "education_level", key: "education_level" },
+        {
+          title: "Expérience",
+          dataIndex: "years_experience",
+          key: "years_experience",
+          render: (v: number) => `${v} an${v > 1 ? "s" : ""}`,
+        },
+        {
+          title: "Compétences",
+          dataIndex: "skills",
+          key: "skills",
+          render: (skills: string[]) => (
+            <Space size={4} wrap>
+              {skills.slice(0, 6).map((s) => (
+                <Tag key={s}>{s}</Tag>
+              ))}
+              {skills.length > 6 && <Tag>+{skills.length - 6}</Tag>}
             </Space>
           ),
-          children: <Paragraph style={{ whiteSpace: "pre-wrap", margin: 0 }}>{c.text}</Paragraph>,
-        }))}
-      />
-    );
-  }
+        },
+        {
+          title: "Pertinence",
+          dataIndex: "similarity",
+          key: "similarity",
+          render: (v: number) => (
+            <Progress percent={Math.round(v * 100)} size="small" style={{ width: 90 }} />
+          ),
+        },
+      ]}
+    />
+  );
+}
 
-  return null; // matching_explanation: the answer itself carries the breakdown
+function ChunkSources({ rows }: { rows: AssistantChunkSource[] }) {
+  if (!rows.length) return null;
+  return (
+    <Collapse
+      size="small"
+      style={{ marginTop: 12 }}
+      items={rows.map((c, i) => ({
+        key: `${c.source_document}-${c.chunk_index}-${i}`,
+        label: (
+          <Space size={6} wrap>
+            <FilePdfOutlined />
+            <strong>{c.source_document}</strong>
+            <Tag>extrait #{c.chunk_index + 1}</Tag>
+            <Tag color="green">pertinence {Math.round(c.similarity * 100)}%</Tag>
+          </Space>
+        ),
+        children: <Paragraph style={{ whiteSpace: "pre-wrap", margin: 0 }}>{c.text}</Paragraph>,
+      }))}
+    />
+  );
 }
 
 export default function AssistantPage() {
   const { token } = theme.useToken();
   const [query, setQuery] = useState("");
-  const [assignmentId, setAssignmentId] = useState<number | null>(null);
-  const [history, setHistory] = useState<ChatTurn[]>([]);
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [busy, setBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const ask = useAssistantQuery();
   const docs = useKnowledgeDocuments();
   const ingest = useIngestKnowledgeDocument();
   const removeDoc = useDeleteKnowledgeDocument();
 
+  // Suivre le bas du fil pendant que la réponse s'écrit.
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [turns]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const onAsk = async (text?: string) => {
     const q = (text ?? query).trim();
-    if (!q) return;
+    if (!q || busy) return;
+
+    // L'historique envoyé au serveur est celui affiché, question comprise.
+    const sent: ChatMessage[] = [
+      ...turns.map((t) => ({ role: t.role, content: t.content })),
+      { role: "user" as const, content: q },
+    ];
+
+    setQuery("");
+    setBusy(true);
+    setTurns((t) => [
+      ...t,
+      { role: "user", content: q },
+      { role: "assistant", content: "", tools: [], streaming: true },
+    ]);
+
+    // Ne réécrire que le dernier tour, celui en cours de rédaction.
+    const patchLast = (fn: (t: Turn) => Turn) =>
+      setTurns((all) => all.map((t, i) => (i === all.length - 1 ? fn(t) : t)));
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      const response = await ask.mutateAsync({
-        query: q,
-        assignment_id: assignmentId ?? undefined,
-      });
-      setHistory((h) => [...h, { question: q, response }]);
-      setQuery("");
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+      await streamChat(
+        sent,
+        (ev: AgentEvent) => {
+          if (ev.type === "delta") {
+            patchLast((t) => ({ ...t, content: t.content + ev.text }));
+          } else if (ev.type === "tool") {
+            const label = TOOL_LABELS[ev.name] ?? ev.name;
+            patchLast((t) => ({ ...t, tools: [...(t.tools ?? []), label] }));
+          } else if (ev.type === "sources") {
+            patchLast((t) => ({ ...t, sources: ev.sources as AssistantSource[] }));
+          } else if (ev.type === "error") {
+            patchLast((t) => ({ ...t, content: t.content || ev.message }));
+          } else if (ev.type === "done") {
+            patchLast((t) => ({ ...t, streaming: false }));
+          }
+        },
+        controller.signal,
+      );
     } catch (err) {
-      message.error(apiErrorMessage(err, "L'assistant est indisponible"));
+      if (!controller.signal.aborted) {
+        const detail = err instanceof Error ? err.message : "L'assistant est indisponible";
+        patchLast((t) => ({ ...t, content: t.content || detail, streaming: false }));
+        message.error(detail);
+      }
+    } finally {
+      patchLast((t) => ({ ...t, streaming: false }));
+      setBusy(false);
+      abortRef.current = null;
     }
+  };
+
+  const onStop = () => abortRef.current?.abort();
+  const onReset = () => {
+    abortRef.current?.abort();
+    setTurns([]);
   };
 
   return (
@@ -177,13 +240,20 @@ export default function AssistantPage() {
               Assistant RAG
             </Space>
           }
+          extra={
+            turns.length > 0 && (
+              <Button size="small" onClick={onReset}>
+                Nouvelle conversation
+              </Button>
+            )
+          }
         >
-          {history.length === 0 ? (
+          {turns.length === 0 ? (
             <div style={{ padding: "24px 0" }}>
               <Paragraph type="secondary">
-                Posez une question en langage naturel — l'assistant choisit automatiquement la
-                bonne source&nbsp;: profils de candidats, scores de matching ou documents de
-                politique de stage.
+                Discutez en langage naturel. L'assistant cherche lui-même dans les candidats,
+                les offres, les réservations et les documents — et il se souvient des messages
+                précédents, donc vous pouvez enchaîner&nbsp;: «&nbsp;et sa filière&nbsp;?&nbsp;»
               </Paragraph>
               <Space direction="vertical" style={{ width: "100%" }}>
                 {EXAMPLES.map((ex) => (
@@ -195,63 +265,59 @@ export default function AssistantPage() {
             </div>
           ) : (
             <div style={{ maxHeight: "55vh", overflowY: "auto", paddingRight: 8 }}>
-              {history.map((turn, i) => {
-                const intent = INTENT_LABELS[turn.response.intent];
-                return (
-                  <div key={i} style={{ marginBottom: 20 }}>
-                    <Paragraph style={{ marginBottom: 8 }}>
-                      <UserOutlined /> <strong>{turn.question}</strong>
+              {turns.map((turn, i) =>
+                turn.role === "user" ? (
+                  <Paragraph key={i} style={{ marginBottom: 8, marginTop: i ? 20 : 0 }}>
+                    <UserOutlined /> <strong>{turn.content}</strong>
+                  </Paragraph>
+                ) : (
+                  <Card key={i} size="small" style={{ background: "transparent" }}>
+                    <Space style={{ marginBottom: 8 }} size={6} wrap>
+                      <RobotOutlined style={{ color: token.colorPrimary }} />
+                      {(turn.tools ?? []).map((t, k) => (
+                        <Tag key={k} color="blue">
+                          {t}
+                        </Tag>
+                      ))}
+                      {turn.streaming && !turn.content && (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          réflexion…
+                        </Text>
+                      )}
+                    </Space>
+                    <Paragraph style={{ whiteSpace: "pre-wrap", marginBottom: 0 }}>
+                      {turn.content}
+                      {turn.streaming && turn.content && (
+                        <span style={{ opacity: 0.5 }}>▍</span>
+                      )}
                     </Paragraph>
-                    <Card size="small" style={{ background: "transparent" }}>
-                      <Space style={{ marginBottom: 8 }}>
-                        <RobotOutlined style={{ color: token.colorPrimary }} />
-                        <Tag color={intent.color}>{intent.label}</Tag>
-                      </Space>
-                      <Paragraph style={{ whiteSpace: "pre-wrap", marginBottom: 0 }}>
-                        {turn.response.answer}
-                      </Paragraph>
-                      <Sources intent={turn.response.intent} sources={turn.response.sources} />
-                    </Card>
-                  </div>
-                );
-              })}
+                    {!turn.streaming && <Sources sources={turn.sources ?? []} />}
+                  </Card>
+                ),
+              )}
               <div ref={bottomRef} />
             </div>
           )}
 
           <Space.Compact style={{ width: "100%", marginTop: 16 }}>
             <Input
-              placeholder="Votre question…"
+              placeholder="Votre message…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onPressEnter={() => onAsk()}
-              disabled={ask.isPending}
+              disabled={busy}
             />
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              loading={ask.isPending}
-              onClick={() => onAsk()}
-            >
-              Envoyer
-            </Button>
+            {busy ? (
+              <Button danger onClick={onStop}>
+                Arrêter
+              </Button>
+            ) : (
+              <Button type="primary" icon={<SendOutlined />} onClick={() => onAsk()}>
+                Envoyer
+              </Button>
+            )}
           </Space.Compact>
-          <Space style={{ marginTop: 8 }} size={8}>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              Affectation (optionnel)&nbsp;:
-            </Text>
-            <InputNumber
-              size="small"
-              min={1}
-              placeholder="ID"
-              value={assignmentId}
-              onChange={(v) => setAssignmentId(v ?? null)}
-              style={{ width: 90 }}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              — renseignez un ID d'affectation pour expliquer son score.
-            </Text>
-          </Space>
+
         </Card>
       </Col>
 
