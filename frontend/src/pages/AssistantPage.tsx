@@ -50,11 +50,14 @@ const { Text, Paragraph } = Typography;
 
 
 // The assistant answers in the language of the question (FR / EN).
+// Exemples choisis pour aboutir avec les données réelles : ils couvrent la
+// recherche de profils, le croisement offre/candidats et le suivi d'une
+// candidature — sans dépendre d'un identifiant codé en dur.
 const EXAMPLES = [
   "Trouve-moi des candidats qui savent faire du Python",
   "Quelles offres de stage sont ouvertes ?",
-  "Qui est en stage en septembre ?",
-  "What is the internship remuneration policy?",
+  "Quels candidats ont un niveau Bac+5 ?",
+  "Quel profil correspond le mieux à l'offre Data Science ?",
 ];
 
 /** Un tour affiché : le texte diffusé + les outils utilisés + les preuves. */

@@ -117,7 +117,7 @@ export async function retrieveCandidates(
   const { data: rows, error } = await sb
     .from("candidates")
     .select(
-      "id, first_name, last_name, education_level, field_of_study, years_experience, cv_text, candidate_skills(skill:skills(name))",
+      "id, first_name, last_name, education_level, field_of_study, university, years_experience, cv_text, candidate_skills(skill:skills(name))",
     );
   if (error) throw new Error(error.message);
 
@@ -155,14 +155,21 @@ export async function retrieveCandidates(
       .filter(Boolean)
       .sort() as string[];
     const haystackSkills = skills.map((s) => s.toLowerCase());
-    const haystackText = `${r.field_of_study ?? ""} ${r.cv_text ?? ""}`.toLowerCase();
+    // education_level et university font partie du champ de recherche : sans
+    // eux, « quels candidats ont un niveau Bac+5 ? » ne matchait personne alors
+    // que la colonne porte exactement cette valeur.
+    const haystackText =
+      `${r.field_of_study ?? ""} ${r.education_level ?? ""} ${r.university ?? ""} ${r.cv_text ?? ""}`.toLowerCase();
 
     let hits = 0;
     for (const term of terms) {
       if (haystackSkills.some((s) => s.includes(term))) hits += 2; // skill hits weigh double
       else if (haystackText.includes(term)) hits += 1;
     }
-    if (hits === 0) continue;
+    // Une recherche purement structurée (« tous les Bac+5 ») est légitime :
+    // quand un filtre explicite est fourni, on n'exige pas de mot en commun.
+    const filterOnly = opts.educationLevel != null || opts.minYearsExperience != null;
+    if (hits === 0 && !filterOnly) continue;
     diag.termMatches++;
 
     // Filters are applied AFTER term matching so an empty result can say which
@@ -190,7 +197,10 @@ export async function retrieveCandidates(
       field_of_study: r.field_of_study,
       years_experience: years,
       skills,
-      similarity: Math.min(1, hits / Math.max(1, terms.length)),
+      // Un profil retenu sur le seul critère structuré n'a pas de score de
+      // recouvrement : on le donne à 0,5 plutôt qu'à 0, qui se lirait comme
+      // « aucun rapport » alors qu'il satisfait exactement le filtre.
+      similarity: hits === 0 ? 0.5 : Math.min(1, hits / Math.max(1, terms.length)),
     });
   }
   return {
