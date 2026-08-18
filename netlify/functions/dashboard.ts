@@ -30,13 +30,24 @@ export default async (req: Request): Promise<Response> => {
   if (req.method !== "GET") return fail("Méthode non autorisée", 405);
   const sb = admin();
 
-  const [apps, offers, departments, assignments, candSkills, candCount] = await Promise.all([
+  // Fenêtre « nouveaux candidats » : 30 jours glissants.
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+  const since30d = since.toISOString();
+
+  const [apps, offers, departments, assignments, candSkills, candCount, newCandCount] =
+    await Promise.all([
     sb.from("applications").select("status, created_at, candidate:candidates(field_of_study)"),
     sb.from("internship_offers").select("slots"),
     sb.from("departments").select("id, name, capacity"),
     sb.from("assignments").select("match_score, status, offer:internship_offers(department_id)"),
     sb.from("candidate_skills").select("skill:skills(name)"),
     sb.from("candidates").select("id", { count: "exact", head: true }),
+    // head:true -> on ne rapatrie que le compte, pas les lignes.
+    sb
+      .from("candidates")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", since30d),
   ]);
 
   const appRows = (apps.data ?? []) as any[];
@@ -51,6 +62,10 @@ export default async (req: Request): Promise<Response> => {
 
   const assignRows = (assignments.data ?? []) as any[];
   const scored = assignRows.filter((a) => a.status !== "rejected");
+  // Décisions du recruteur sur les propositions du moteur d'affectation.
+  const confirmedCount = assignRows.filter((a) => a.status === "confirmed").length;
+  const rejectedCount = assignRows.filter((a) => a.status === "rejected").length;
+  const newCandidates30d = newCandCount.count ?? 0;
   const avgScore = scored.length
     ? scored.reduce((s, a) => s + Number(a.match_score ?? 0), 0) / scored.length
     : 0;
@@ -86,6 +101,9 @@ export default async (req: Request): Promise<Response> => {
       total_slots: totalSlots,
       assigned_count: assignedCount,
       pending_count: pendingCount,
+      confirmed_count: confirmedCount,
+      rejected_count: rejectedCount,
+      new_candidates_30d: newCandidates30d,
       assignment_rate: totalApplications ? round(assignedCount / totalApplications) : 0,
       capacity_fill_rate: totalSlots ? round(assignedCount / totalSlots) : 0,
       average_match_score: round(avgScore),

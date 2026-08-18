@@ -1,6 +1,9 @@
 // Admin dashboard: KPI tiles + theme-aware Recharts visualisations.
 import { Col, Row, Card, Spin, Empty, Table, Progress, Typography, theme } from "antd";
 import {
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  UserAddOutlined,
   TeamOutlined,
   FileTextOutlined,
   DeploymentUnitOutlined,
@@ -130,6 +133,34 @@ export default function DashboardPage() {
             icon={<DeploymentUnitOutlined />}
             accent="warning"
             progress={kpis.average_match_score * 100}
+          />
+        </Col>
+      </Row>
+
+      {/* --- Décisions & arrivées --- */}
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Col xs={24} sm={8}>
+          <KpiCard
+            title="Affectations confirmées"
+            value={kpis.confirmed_count}
+            icon={<CheckCircleOutlined />}
+            accent="success"
+          />
+        </Col>
+        <Col xs={24} sm={8}>
+          <KpiCard
+            title="Affectations rejetées"
+            value={kpis.rejected_count}
+            icon={<CloseCircleOutlined />}
+            accent="danger"
+          />
+        </Col>
+        <Col xs={24} sm={8}>
+          <KpiCard
+            title="Nouveaux candidats (30 j)"
+            value={kpis.new_candidates_30d}
+            icon={<UserAddOutlined />}
+            accent="info"
           />
         </Col>
       </Row>

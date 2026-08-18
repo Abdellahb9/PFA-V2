@@ -241,6 +241,11 @@ export interface KpiSummary {
   total_slots: number;
   assigned_count: number;
   pending_count: number;
+  /** Affectations tranchées par un recruteur. */
+  confirmed_count: number;
+  rejected_count: number;
+  /** Candidats enregistrés sur les 30 derniers jours. */
+  new_candidates_30d: number;
   assignment_rate: number;
   capacity_fill_rate: number;
   average_match_score: number;
