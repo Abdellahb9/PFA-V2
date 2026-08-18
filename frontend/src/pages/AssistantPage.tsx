@@ -38,7 +38,8 @@ import {
 } from "@/api/hooks";
 import { apiErrorMessage } from "@/api/client";
 import { streamChat, TOOL_LABELS } from "@/api/chat";
-import type { AgentEvent, ChatMessage } from "@/api/chat";
+import type { AgentEvent, ChatMessage, StoredConversation } from "@/api/chat";
+import { api } from "@/api/client";
 import type {
   AssistantCandidateSource,
   AssistantChunkSource,
@@ -152,6 +153,7 @@ export default function AssistantPage() {
   const [query, setQuery] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
+  const [conversationId, setConversationId] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -165,6 +167,35 @@ export default function AssistantPage() {
   }, [turns]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // Reprendre le fil le plus récent à l'ouverture de la page.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: list } = await api.get<{ id: number }[]>("/assistant/conversations");
+        if (!list?.length || cancelled) return;
+        const { data: conv } = await api.get<StoredConversation>(
+          `/assistant/conversations/${list[0].id}`,
+        );
+        if (cancelled || !conv?.messages?.length) return;
+        setConversationId(conv.id);
+        setTurns(
+          conv.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            tools: (m.tools ?? []).map((t) => TOOL_LABELS[t] ?? t),
+            sources: (m.sources ?? []) as AssistantSource[],
+          })),
+        );
+      } catch {
+        /* pas de fil enregistré (ou migration non appliquée) : on démarre à vide */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const onAsk = async (text?: string) => {
     const q = (text ?? query).trim();
@@ -204,11 +235,14 @@ export default function AssistantPage() {
             patchLast((t) => ({ ...t, sources: ev.sources as AssistantSource[] }));
           } else if (ev.type === "error") {
             patchLast((t) => ({ ...t, content: t.content || ev.message }));
+          } else if (ev.type === "conversation") {
+            setConversationId(ev.conversation_id);
           } else if (ev.type === "done") {
             patchLast((t) => ({ ...t, streaming: false }));
           }
         },
         controller.signal,
+        conversationId,
       );
     } catch (err) {
       if (!controller.signal.aborted) {
@@ -227,6 +261,7 @@ export default function AssistantPage() {
   const onReset = () => {
     abortRef.current?.abort();
     setTurns([]);
+    setConversationId(null); // le prochain message ouvrira un nouveau fil
   };
 
   return (

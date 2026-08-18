@@ -33,8 +33,9 @@ interface Route {
 
 // Order matters: most specific patterns first.
 const routes: Route[] = [
+  { re: /^\/api\/assistant\/conversations\/([^/]+)\/?$/, fn: assistant, keys: ["id"] },
   { re: /^\/api\/assistant\/documents\/([^/]+)\/?$/, fn: assistant, keys: ["name"] },
-  { re: /^\/api\/assistant\/(?:chat|query|documents)\/?$/, fn: assistant },
+  { re: /^\/api\/assistant\/(?:chat|query|documents|conversations)\/?$/, fn: assistant },
 
   { re: /^\/api\/applications\/([^/]+)\/([^/]+)\/?$/, fn: applications, keys: ["id", "action"] },
   { re: /^\/api\/applications\/([^/]+)\/?$/, fn: applications, keys: ["id"] },

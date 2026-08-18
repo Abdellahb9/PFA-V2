@@ -9,6 +9,12 @@ import { json, fail, noContent, methodNotAllowed, readBody } from "./_shared/htt
 import { extractCvText } from "./_shared/cv";
 import { runAgent, sanitizeHistory } from "./_shared/agent";
 import {
+  getConversation,
+  listConversations,
+  resolveConversation,
+  saveMessage,
+} from "./_shared/conversations";
+import {
   classifyIntent,
   detectLanguage,
   generateAnswer,
@@ -22,6 +28,8 @@ import {
 export const config = {
   path: [
     "/api/assistant/chat",
+    "/api/assistant/conversations",
+    "/api/assistant/conversations/:id",
     "/api/assistant/query",
     "/api/assistant/documents",
     "/api/assistant/documents/:name",
@@ -30,21 +38,48 @@ export const config = {
 
 // Conversation en flux (SSE). Chaque événement est une ligne `data: {json}`.
 // Le format one-shot /query est conservé pour compatibilité.
-async function handleChat(req: Request): Promise<Response> {
+async function handleChat(req: Request, userId: string): Promise<Response> {
   const body = await readBody(req);
   const history = sanitizeHistory(body.messages);
   if (!history.length) return fail("Conversation vide");
-  if (history[history.length - 1].role !== "user") {
+  const last = history[history.length - 1];
+  if (last.role !== "user") {
     return fail("Le dernier message doit venir de l'utilisateur");
   }
+
+  const conversationId = await resolveConversation(
+    userId,
+    body.conversation_id != null ? Number(body.conversation_id) : null,
+    last.content,
+  );
+  await saveMessage(conversationId, { role: "user", content: last.content });
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (event: unknown) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      // Le fil est annoncé en premier : le client peut le retenir même si la
+      // génération échoue ensuite.
+      send({ type: "conversation", conversation_id: conversationId });
+      let answer = "";
+      const tools: string[] = [];
+      let sources: unknown[] = [];
       try {
-        for await (const event of runAgent(history)) send(event);
+        for await (const event of runAgent(history)) {
+          if (event.type === "delta") answer += event.text;
+          else if (event.type === "tool") tools.push(event.name);
+          else if (event.type === "sources") sources = event.sources;
+          send(event);
+        }
+        if (answer.trim()) {
+          await saveMessage(conversationId, {
+            role: "assistant",
+            content: answer,
+            tools,
+            sources,
+          });
+        }
       } catch (err) {
         send({
           type: "error",
@@ -172,7 +207,20 @@ export default async (req: Request, ctx: { params?: Record<string, string> }): P
     const user = await requireUser(req);
     if (user instanceof Response) return user;
     if (req.method !== "POST") return methodNotAllowed();
-    return handleChat(req);
+    return handleChat(req, user.id);
+  }
+
+  // Fils de conversation : strictement ceux de l'appelant.
+  if (pathname.includes("/conversations")) {
+    const user = await requireUser(req);
+    if (user instanceof Response) return user;
+    if (req.method !== "GET") return methodNotAllowed();
+    const id = ctx.params?.id;
+    if (id) {
+      const conv = await getConversation(user.id, Number(id));
+      return conv ? json(conv) : fail("Conversation introuvable", 404);
+    }
+    return json(await listConversations(user.id));
   }
 
   if (pathname.endsWith("/query")) {

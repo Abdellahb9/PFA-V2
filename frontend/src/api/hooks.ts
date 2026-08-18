@@ -331,6 +331,18 @@ export const useAssignCandidate = () => {
 };
 
 // ---- Assistant RAG ----
+// Fils de conversation persistés (l'API ne renvoie que ceux de l'appelant).
+export const useConversations = () =>
+  useQuery({
+    queryKey: ["assistant-conversations"],
+    queryFn: async () =>
+      (
+        await api.get<{ id: number; title: string; updated_at: string }[]>(
+          "/assistant/conversations",
+        )
+      ).data,
+  });
+
 export const useAssistantQuery = () =>
   useMutation({
     mutationFn: async (body: {

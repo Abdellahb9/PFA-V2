@@ -13,6 +13,7 @@ export interface ChatMessage {
 }
 
 export type AgentEvent =
+  | { type: "conversation"; conversation_id: number | null }
   | { type: "tool"; name: string; args: Record<string, unknown> }
   | { type: "delta"; text: string }
   | { type: "sources"; sources: unknown[] }
@@ -28,10 +29,22 @@ export const TOOL_LABELS: Record<string, string> = {
   list_bookings: "Consultation des réservations",
 };
 
+export interface StoredConversation {
+  id: number;
+  title: string;
+  messages: {
+    role: "user" | "assistant";
+    content: string;
+    tools: string[] | null;
+    sources: unknown[] | null;
+  }[];
+}
+
 export async function streamChat(
   messages: ChatMessage[],
   onEvent: (event: AgentEvent) => void,
   signal?: AbortSignal,
+  conversationId?: number | null,
 ): Promise<void> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -42,7 +55,7 @@ export async function streamChat(
       "content-type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, conversation_id: conversationId ?? null }),
     signal,
   });
 
