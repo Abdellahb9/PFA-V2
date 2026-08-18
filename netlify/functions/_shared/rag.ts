@@ -96,10 +96,22 @@ export interface CandidateSource {
 
 const MIN_YEARS_RE = /(\d+)\s*(?:\+|ans?|years?)/i;
 
+/** Why a search came back empty — a bare "no results" hides the real cause. */
+export interface CandidateSearchDiag {
+  scanned: number;
+  /** Matched the query terms, before the years / education filters. */
+  termMatches: number;
+  excludedByYears: number;
+  excludedByEducation: number;
+  /** Among those excluded by the years filter, how many have no experience on file. */
+  experienceUnknown: number;
+  minYears: number | null;
+}
+
 export async function retrieveCandidates(
   query: string,
   opts: { minYearsExperience?: number | null; educationLevel?: string | null; topK?: number } = {},
-): Promise<CandidateSource[]> {
+): Promise<{ results: CandidateSource[]; diag: CandidateSearchDiag }> {
   const sb = admin();
   const topK = opts.topK ?? 5;
   const { data: rows, error } = await sb
@@ -123,14 +135,17 @@ export async function retrieveCandidates(
     (MIN_YEARS_RE.test(query) ? parseInt(query.match(MIN_YEARS_RE)![1], 10) : null);
 
   const scored: CandidateSource[] = [];
+  const diag: CandidateSearchDiag = {
+    scanned: (rows ?? []).length,
+    termMatches: 0,
+    excludedByYears: 0,
+    excludedByEducation: 0,
+    experienceUnknown: 0,
+    minYears,
+  };
+
   for (const r of rows ?? []) {
     const years = Number(r.years_experience ?? 0);
-    if (minYears != null && years < minYears) continue;
-    if (
-      opts.educationLevel &&
-      !(r.education_level ?? "").toLowerCase().includes(opts.educationLevel.toLowerCase())
-    )
-      continue;
 
     const skills = (r.candidate_skills ?? [])
       .map((cs: { skill: { name: string } | { name: string }[] | null }) => {
@@ -148,6 +163,24 @@ export async function retrieveCandidates(
       else if (haystackText.includes(term)) hits += 1;
     }
     if (hits === 0) continue;
+    diag.termMatches++;
+
+    // Filters are applied AFTER term matching so an empty result can say which
+    // one actually removed the candidates.
+    if (minYears != null && years < minYears) {
+      diag.excludedByYears++;
+      // years_experience defaults to 0 and is only filled when the CV analysis
+      // could determine it — 0 means "unknown" as often as it means "none".
+      if (years === 0) diag.experienceUnknown++;
+      continue;
+    }
+    if (
+      opts.educationLevel &&
+      !(r.education_level ?? "").toLowerCase().includes(opts.educationLevel.toLowerCase())
+    ) {
+      diag.excludedByEducation++;
+      continue;
+    }
 
     scored.push({
       type: "candidate",
@@ -160,7 +193,49 @@ export async function retrieveCandidates(
       similarity: Math.min(1, hits / Math.max(1, terms.length)),
     });
   }
-  return scored.sort((a, b) => b.similarity - a.similarity).slice(0, topK);
+  return {
+    results: scored.sort((a, b) => b.similarity - a.similarity).slice(0, topK),
+    diag,
+  };
+}
+
+/** Empty-result message that names the cause instead of a bare "no results". */
+export function candidateEmptyAnswer(diag: CandidateSearchDiag, lang: Lang = "fr"): string {
+  const fr = lang === "fr";
+  if (diag.scanned === 0) {
+    return fr
+      ? "Aucun candidat n'est encore enregistré. Importez des CV depuis la page Candidatures."
+      : "No candidates recorded yet. Import CVs from the Applications page.";
+  }
+  if (diag.termMatches === 0) {
+    return fr
+      ? `Aucun des ${diag.scanned} candidats ne correspond aux termes de la recherche. ` +
+          `La recherche porte sur les compétences extraites, la filière et le texte du CV.`
+      : `None of the ${diag.scanned} candidates match the search terms. ` +
+          `The search covers extracted skills, field of study and CV text.`;
+  }
+  if (diag.excludedByYears > 0) {
+    const unknown = diag.experienceUnknown;
+    const base = fr
+      ? `${diag.termMatches} candidat(s) correspondent à la recherche, mais aucun n'atteint ` +
+        `${diag.minYears} an(s) d'expérience.`
+      : `${diag.termMatches} candidate(s) match the search, but none reach ` +
+        `${diag.minYears} year(s) of experience.`;
+    if (unknown === 0) return base;
+    return fr
+      ? `${base} Attention : pour ${unknown} d'entre eux l'expérience n'a pas pu être ` +
+          `extraite du CV (enregistrée à 0). Relancez l'analyse de leur CV ou retirez ce critère.`
+      : `${base} Note: for ${unknown} of them the experience could not be extracted from ` +
+          `the CV (stored as 0). Re-run their CV analysis or drop this filter.`;
+  }
+  if (diag.excludedByEducation > 0) {
+    return fr
+      ? `${diag.termMatches} candidat(s) correspondent à la recherche, mais aucun n'a le ` +
+          `niveau d'études demandé.`
+      : `${diag.termMatches} candidate(s) match the search, but none have the requested ` +
+          `education level.`;
+  }
+  return emptyAnswer("candidate_search", lang);
 }
 
 // ---- Skill 2: matching-score explanation -------------------------------------

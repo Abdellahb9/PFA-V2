@@ -13,6 +13,7 @@ import {
   generateAnswer,
   getScoreBreakdown,
   ingestDocumentText,
+  candidateEmptyAnswer,
   retrieveCandidates,
   retrieveDocChunks,
 } from "./_shared/rag";
@@ -50,12 +51,17 @@ async function handleQuery(req: Request): Promise<Response> {
   }
 
   if (intent === "candidate_search") {
-    const results = await retrieveCandidates(query, {
+    const { results, diag } = await retrieveCandidates(query, {
       minYearsExperience: body.min_years_experience != null ? Number(body.min_years_experience) : null,
       educationLevel: body.education_level ?? null,
       topK,
     });
-    return json({ intent, answer: await generateAnswer(intent, query, results), sources: results });
+    // An empty result explains which filter removed the candidates rather than
+    // leaving the recruiter to guess.
+    const answer = results.length
+      ? await generateAnswer(intent, query, results)
+      : candidateEmptyAnswer(diag, detectLanguage(query));
+    return json({ intent, answer, sources: results, diagnostic: diag });
   }
 
   const results = await retrieveDocChunks(query, topK);
