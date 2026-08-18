@@ -267,20 +267,6 @@ export const useRunMatching = () =>
     }) => (await api.post<MatchingResult>("/matching-run", body)).data,
   });
 
-export const useDecideAssignment = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) =>
-      (await api.patch(`/assignments/${id}`, { status })).data,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      qc.invalidateQueries({ queryKey: ["applications"] });
-      // A decision creates/removes a booking.
-      qc.invalidateQueries({ queryKey: ["bookings"] });
-    },
-  });
-};
-
 // ---- Booked offers ----
 // `from`/`to` keep the bookings that OVERLAP the window, not just those
 // starting inside it, so a running internship shows up in the month you ask for.
@@ -316,6 +302,25 @@ export const useOfferRankings = (
       (await api.get<OfferRanking[]>("/offer-rankings", { params: weights })).data,
     enabled,
   });
+
+// Décider sur une proposition du moteur d'affectation. La proposition n'existe
+// pas forcément en base (mode aperçu), donc on l'identifie par le couple
+// (candidature, offre) et le serveur crée puis décide en une fois.
+export const useDecideProposal = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      application_id: number;
+      offer_id: number;
+      status: "confirmed" | "rejected";
+    }) => (await api.post("/assignments", body)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["applications"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["bookings"] });
+    },
+  });
+};
 
 // Manually assign a candidate (application) to a chosen offer.
 export const useAssignCandidate = () => {

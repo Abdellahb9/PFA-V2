@@ -23,12 +23,22 @@ export default async (req: Request, context: Context): Promise<Response> => {
   }
 
   // Manual assignment: assign an application to a chosen offer (from the per-offer
-  // ranking). The score is recomputed server-side (client score is not trusted).
+  // ranking or the matching preview). The score is recomputed server-side (the
+  // client score is not trusted).
+  //
+  // `status` permet de créer ET décider en un seul appel. C'est ce dont a besoin
+  // l'écran d'affectation : ses propositions n'existent pas encore en base quand
+  // l'optimisation tourne en aperçu, et il n'a donc aucun id d'affectation à
+  // fournir. Le couple (candidature, offre) est la seule clé qu'il connaisse.
   if (req.method === "POST" && !id) {
     const b = await readBody(req);
     const applicationId = Number(b.application_id);
     const offerId = Number(b.offer_id);
     if (!applicationId || !offerId) return fail("Paramètres manquants", 422);
+    const decision = b.status != null ? String(b.status) : null;
+    if (decision != null && !["confirmed", "rejected", "proposed"].includes(decision)) {
+      return fail("Statut invalide", 422);
+    }
 
     const [candidates, offers] = await Promise.all([
       loadCandidateProfiles(),
@@ -58,15 +68,20 @@ export default async (req: Request, context: Context): Promise<Response> => {
         offer_id: offerId,
         match_score: score,
         score_breakdown: breakdown,
-        status: "proposed",
+        status: decision ?? "proposed",
         decided_by: user.email,
       })
       .select()
       .single();
     if (error) return fail(error.message, 500);
+
+    // Le statut de la candidature suit la décision, comme dans PATCH.
     await sb
       .from("applications")
-      .update({ match_score: score, status: "under_review" })
+      .update({
+        match_score: score,
+        status: decision === "confirmed" ? "assigned" : "under_review",
+      })
       .eq("id", applicationId);
     return json(data, 201);
   }

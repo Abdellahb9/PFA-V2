@@ -31,7 +31,7 @@ import {
 import ScoreBreakdownChart from "@/components/ScoreBreakdownChart";
 import {
   useAssignCandidate,
-  useDecideAssignment,
+  useDecideProposal,
   useOfferRankings,
   useRunMatching,
 } from "@/api/hooks";
@@ -48,7 +48,7 @@ export default function MatchingPage() {
   const [showRankings, setShowRankings] = useState(false);
 
   const runMatching = useRunMatching();
-  const decide = useDecideAssignment();
+  const decideProposal = useDecideProposal();
   const rankings = useOfferRankings({ skills, education }, showRankings);
   const assign = useAssignCandidate();
 
@@ -80,12 +80,36 @@ export default function MatchingPage() {
     }
   };
 
-  const onDecide = async (assignmentId: number, status: "confirmed" | "rejected") => {
+  // La proposition est identifiée par (candidature, offre) : en mode aperçu elle
+  // n'a pas encore de ligne en base, et l'ancien code envoyait application_id là
+  // où l'API attend un id d'affectation — au mieux un 404, au pire la
+  // confirmation de l'affectation d'un autre candidat portant ce numéro.
+  const onDecide = async (row: AssignmentPreview, status: "confirmed" | "rejected") => {
     try {
-      await decide.mutateAsync({ id: assignmentId, status });
-      message.success(status === "confirmed" ? "Affectation confirmée" : "Affectation rejetée");
-    } catch {
-      message.error("Action impossible (lancez d'abord en mode enregistrement)");
+      await decideProposal.mutateAsync({
+        application_id: row.application_id,
+        offer_id: row.offer_id,
+        status,
+      });
+      message.success(
+        status === "confirmed"
+          ? `${row.candidate_name} affecté à « ${row.offer_title} »`
+          : `Proposition rejetée pour ${row.candidate_name}`,
+      );
+      // La ligne décidée disparaît de l'aperçu : elle est tranchée.
+      setResult((r) =>
+        r
+          ? {
+              ...r,
+              assignments: r.assignments.filter(
+                (a) =>
+                  !(a.application_id === row.application_id && a.offer_id === row.offer_id),
+              ),
+            }
+          : r,
+      );
+    } catch (err) {
+      message.error(apiErrorMessage(err, "Décision impossible"));
     }
   };
 
@@ -126,7 +150,7 @@ export default function MatchingPage() {
             size="small"
             type="primary"
             icon={<CheckOutlined />}
-            onClick={() => onDecide(r.application_id, "confirmed")}
+            onClick={() => onDecide(r, "confirmed")}
           >
             Confirmer
           </Button>
@@ -134,7 +158,7 @@ export default function MatchingPage() {
             size="small"
             danger
             icon={<CloseOutlined />}
-            onClick={() => onDecide(r.application_id, "rejected")}
+            onClick={() => onDecide(r, "rejected")}
           >
             Rejeter
           </Button>
