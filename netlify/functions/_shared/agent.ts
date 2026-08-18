@@ -51,7 +51,17 @@ Règles :
 - Tu réponds dans la langue de la question, de façon concise et concrète.
   Cite les noms et les chiffres exacts. Pas de listes à puces inutiles.
 - Pour une question sur la politique de stage, appuie-toi sur les extraits
-  documentaires et mentionne le document source.`;
+  documentaires et mentionne le document source.
+- IDENTITÉS : n'attribue JAMAIS à une personne un nom qui vient de la question.
+  Reprends mot pour mot le champ « name » renvoyé par l'outil. Si le nom trouvé
+  diffère de celui demandé — même partiellement — dis-le explicitement au lieu
+  de présenter le profil sous le nom demandé. Une correspondance partielle
+  (« bedda ») n'est pas une identification.
+- Les personnes vivent dans DEUX sources distinctes : la base des candidats
+  (CV analysés) et la base documentaire (documents déposés, CV compris). Si
+  l'une ne donne rien, INTERROGE L'AUTRE avant de conclure que l'information
+  est introuvable. Une question du type « quelle est l'expérience de X ? » où
+  X n'est pas un candidat connu doit déclencher search_documents.`;
 
 export const TOOLS = [
   {
@@ -92,8 +102,10 @@ export const TOOLS = [
     function: {
       name: "search_documents",
       description:
-        "Recherche plein-texte dans la base documentaire (politique de stage, conventions, " +
-        "règlements). À utiliser pour toute question sur les règles, durées ou procédures.",
+        "Recherche plein-texte dans TOUS les documents déposés dans la base documentaire : " +
+        "politique de stage, conventions et règlements, mais aussi CV et tout autre document " +
+        "téléversé. À utiliser pour les règles et procédures, ET pour retrouver une personne " +
+        "ou une information qui n'est pas dans la base des candidats.",
       parameters: {
         type: "object",
         properties: {
@@ -176,6 +188,11 @@ async function runTool(
               // On donne au modèle la phrase d'explication déjà calculée pour
               // qu'il n'invente pas une raison à la recherche vide.
               explication: candidateEmptyAnswer(diag, detectLanguage(String(args.query ?? ""))),
+              // La personne cherchée peut figurer dans un document déposé sans
+              // être un candidat enregistré : ne pas conclure sans avoir vérifié.
+              prochaine_etape:
+                "Aucun candidat trouvé. Appelle search_documents avec la même requête " +
+                "avant de répondre : la personne peut apparaître dans un document déposé.",
             },
         sources: results,
       };
@@ -185,7 +202,25 @@ async function runTool(
         String(args.query ?? ""),
         args.top_k != null ? Number(args.top_k) : 5,
       );
-      return { payload: { extraits: chunks }, sources: chunks };
+      if (chunks.length) return { payload: { extraits: chunks }, sources: chunks };
+
+      // Sans explication, le modèle relance la même recherche en boucle avec
+      // des mots différents. On distingue « base vide » de « aucun résultat ».
+      const { count } = await admin()
+        .from("document_chunks")
+        .select("id", { count: "exact", head: true });
+      return {
+        payload: {
+          extraits: [],
+          base_documentaire_vide: !count,
+          explication: count
+            ? "Aucun extrait ne correspond. Ne relance pas la même recherche : " +
+              "dis-le et propose d'autres mots-clés."
+            : "La base documentaire ne contient aucun document. Dis-le franchement " +
+              "et invite à déposer un document. N'appelle plus cet outil.",
+        },
+        sources: [],
+      };
     }
     case "explain_assignment_score": {
       const id = Number(args.assignment_id);
@@ -272,15 +307,43 @@ export async function* runAgent(history: ChatMessage[]): AsyncGenerator<AgentEve
   const allSources: unknown[] = [];
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-    // Au dernier tour on retire les outils : le modèle doit conclure.
+    // Au dernier tour on retire les outils pour forcer une conclusion. Le
+    // modèle tente parfois d'en appeler un quand même, et Groq rejette alors la
+    // requête (« Tool choice is none, but model called a tool ») : on le lui
+    // dit explicitement, et on rattrape le cas où il insiste.
     const useTools = round < MAX_TOOL_ROUNDS;
-    const stream = await client.chat.completions.create({
-      model: ASSISTANT_MODEL,
-      temperature: 0.2,
-      stream: true,
-      ...(useTools ? { tools: TOOLS, tool_choice: "auto" as const } : {}),
-      messages,
-    });
+    const turnMessages = useTools
+      ? messages
+      : [
+          ...messages,
+          {
+            role: "system" as const,
+            content:
+              "Tu ne peux plus appeler d'outil. Réponds maintenant avec les informations " +
+              "déjà recueillies, et dis franchement ce qui reste introuvable.",
+          },
+        ];
+
+    let stream;
+    try {
+      stream = await client.chat.completions.create({
+        model: ASSISTANT_MODEL,
+        temperature: 0.2,
+        stream: true,
+        ...(useTools ? { tools: TOOLS, tool_choice: "auto" as const } : {}),
+        messages: turnMessages,
+      });
+    } catch (err) {
+      console.error("agent round failed:", err);
+      yield {
+        type: "delta",
+        text:
+          "Je n'ai pas pu aboutir avec les informations disponibles. " +
+          "Reformulez la question ou précisez un critère.",
+      };
+      yield { type: "done" };
+      return;
+    }
 
     let content = "";
     // Les appels d'outils arrivent en fragments : on les recompose par index.
