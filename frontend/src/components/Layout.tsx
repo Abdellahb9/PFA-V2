@@ -19,6 +19,7 @@ import { useAppDispatch, useAppSelector } from "@/store";
 import { logout, sessionCleared } from "@/store/authSlice";
 import RouteFallback from "@/components/RouteFallback";
 import ThemeToggle from "@/components/ThemeToggle";
+import NotificationsBell from "@/components/NotificationsBell";
 import { useThemeMode } from "@/theme/ThemeProvider";
 
 const { Header, Sider, Content } = Layout;
@@ -88,6 +89,7 @@ export default function AppLayout() {
             paddingInline: 24,
           }}
         >
+          <NotificationsBell />
           <ThemeToggle />
           <Dropdown
             menu={{

@@ -7,7 +7,7 @@ import { json, fail, readBody } from "./_shared/http";
 export const config = { path: ["/api/candidates", "/api/candidates/:id"] };
 
 const SELECT =
-  "id, first_name, last_name, email, phone, education_level, field_of_study, university, years_experience, cv_text, candidate_skills(weight, skill:skills(name))";
+  "id, first_name, last_name, email, phone, education_level, field_of_study, university, years_experience, created_at, cv_text, candidate_skills(weight, skill:skills(name))";
 // Detail/notes variant — requires migration 0004 (candidates.notes).
 const SELECT_DETAIL =
   "id, first_name, last_name, email, phone, education_level, field_of_study, university, years_experience, notes, cv_text, candidate_skills(weight, skill:skills(name))";
@@ -28,6 +28,7 @@ function serialize(c: any) {
     university: c.university,
     years_experience: c.years_experience,
     notes: c.notes ?? null,
+    created_at: c.created_at ?? null,
     skills,
     has_embedding: Boolean(c.cv_text), // "analysé" — pas d'embeddings en serverless
   };

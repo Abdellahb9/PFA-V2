@@ -138,6 +138,16 @@ export const useCandidates = (search?: string) =>
       (await api.get<Candidate[]>("/candidates", { params: { search } })).data,
   });
 
+// Liste réduite pour la cloche de notifications. Clé distincte de celle de la
+// page Candidats : le rafraîchissement périodique ne concerne que l en-tête.
+export const useNewCandidates = () =>
+  useQuery({
+    queryKey: ["candidates-recent"],
+    queryFn: async () => (await api.get<Candidate[]>("/candidates")).data,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
 // CRM detail (fiche): candidate + applications + notes.
 export const useCandidate = (id: number | null) =>
   useQuery({

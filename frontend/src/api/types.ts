@@ -109,6 +109,8 @@ export interface Candidate {
   university?: string | null;
   years_experience: number;
   notes?: string | null;
+  /** Date d arrivée du candidat — sert aux notifications. */
+  created_at?: string | null;
   skills: SkillRef[];
   has_embedding: boolean;
 }
