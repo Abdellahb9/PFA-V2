@@ -410,7 +410,8 @@ Migrations: `supabase/migrations/0001–0008` (apply in order via SQL editor; id
 | GET | `/api/offer-rankings` | staff | Ranked candidates per offer with score breakdowns |
 | GET/POST | `/api/assignments`, `/api/assignments/:id` | staff | Validate/reject proposed assignments |
 | GET | `/api/capacity-forecast` | staff | XGBoost next-month demand forecast + slot recommendations |
-| POST | `/api/assistant/query` | staff | RAG query (candidate search / score explanation / policy Q&A, FR+EN) |
+| POST | `/api/assistant/chat` | staff | Streaming tool-calling agent (SSE): candidate search, score explanation, policy Q&A, offers, bookings — FR+EN |
+| GET | `/api/assistant/conversations`, `/api/assistant/conversations/:id` | any user | Caller's own conversation threads |
 | GET/POST | `/api/assistant/documents` | staff | List / upload (PDF/DOCX/TXT) knowledge documents |
 | DELETE | `/api/assistant/documents/:name` | staff | Remove a knowledge document's chunks |
 
@@ -505,7 +506,7 @@ No `TODO`/`FIXME` comments exist in the source. Observed issues:
 
 **Security**
 - Enable Supabase Leaked Password Protection and consider MFA for staff.
-- Add rate limiting on the serverless public endpoints beyond `submit-application` (e.g. `assistant/query` per-user quotas — each call costs Groq tokens).
+- `assistant/chat` is rate limited per user (60 messages/hour) — each message costs up to 5 Groq calls. Extend the same treatment to the other serverless endpoints beyond `submit-application`.
 - Rotate the Groq/Supabase service keys periodically; keys currently live only in host env (good) — document rotation in `docs/devops.md`.
 - Pin exact versions (remove `^`) in the functions `package.json` for reproducible serverless builds.
 

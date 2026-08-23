@@ -51,9 +51,18 @@ Aucun serveur, Docker, Celery, Redis, MinIO ni PyTorch. Coût ≈ 0 (tiers gratu
 
 1. Créez (ou réutilisez) un projet Supabase.
 2. **SQL Editor** → exécutez **dans l'ordre** tous les fichiers de
-   [`supabase/migrations/`](supabase/migrations/) : `0001` → `0008`.
+   [`supabase/migrations/`](supabase/migrations/) : `0001` → `0015`.
    (Tables + RLS, données de démo, portail candidat, CRM admin, durcissement
-   sécurité, cache d'analyse CV, base de connaissances RAG, recherche bilingue.)
+   sécurité, cache d'analyse CV, base de connaissances RAG, recherche bilingue,
+   période de stage, sémantique OU, conversations de l'assistant, échanges
+   d'offre, correctif de requête RAG, recherche de candidats, ingestion atomique.)
+
+   > **`0014` demande l'extension `pg_trgm`** (créée par la migration elle-même)
+   > et effectue une **reprise de l'existant** : elle recopie les compétences de
+   > chaque candidat dans `candidates.skills_text`, que des triggers maintiennent
+   > ensuite. Sur une base déjà peuplée, comptez quelques secondes ; sans cette
+   > reprise les profils déjà enregistrés sortiraient de toute recherche par
+   > compétence.
 3. **Authentication → Users → Add user** → créez votre compte admin
    (email + mot de passe **fort**). Puis dans **SQL Editor** :
    ```sql
