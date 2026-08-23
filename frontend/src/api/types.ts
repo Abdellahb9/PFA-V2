@@ -282,8 +282,10 @@ export interface DashboardData {
 }
 
 // ---- Assistant RAG ----
-export type AssistantIntent = "candidate_search" | "matching_explanation" | "policy_qa";
-
+// `similarity` est un score ABSOLU (ts_rank_cd, dans [0, 1[) renvoyé par
+// Postgres : il se compare d'une requête à l'autre. Il n'est plus normalisé sur
+// le meilleur résultat, ce qui affichait « 100 % » sur le premier extrait même
+// lorsqu'il était hors sujet.
 export interface AssistantCandidateSource {
   type: "candidate";
   candidate_id: number;
@@ -327,12 +329,6 @@ export type AssistantSource =
   | AssistantCandidateSource
   | AssistantChunkSource
   | AssistantExplanationSource;
-
-export interface AssistantResponse {
-  intent: AssistantIntent;
-  answer: string;
-  sources: AssistantSource[];
-}
 
 export interface KnowledgeDocument {
   source_document: string;

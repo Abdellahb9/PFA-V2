@@ -38,7 +38,7 @@ import {
 } from "@/api/hooks";
 import { apiErrorMessage } from "@/api/client";
 import { streamChat, TOOL_LABELS } from "@/api/chat";
-import type { AgentEvent, ChatMessage, StoredConversation } from "@/api/chat";
+import type { AgentEvent, StoredConversation } from "@/api/chat";
 import { api } from "@/api/client";
 import type {
   AssistantCandidateSource,
@@ -204,12 +204,6 @@ export default function AssistantPage() {
     const q = (text ?? query).trim();
     if (!q || busy) return;
 
-    // L'historique envoyé au serveur est celui affiché, question comprise.
-    const sent: ChatMessage[] = [
-      ...turns.map((t) => ({ role: t.role, content: t.content })),
-      { role: "user" as const, content: q },
-    ];
-
     setQuery("");
     setBusy(true);
     setTurns((t) => [
@@ -226,8 +220,9 @@ export default function AssistantPage() {
     abortRef.current = controller;
 
     try {
+      // Seul le nouveau message part : le serveur relit le fil en base.
       await streamChat(
-        sent,
+        q,
         (ev: AgentEvent) => {
           if (ev.type === "delta") {
             patchLast((t) => ({ ...t, content: t.content + ev.text }));
@@ -367,9 +362,26 @@ export default function AssistantPage() {
             multiple={false}
             showUploadList={false}
             customRequest={async ({ file, onSuccess, onError }) => {
+              const send = (replace?: boolean) =>
+                ingest.mutateAsync({ file: file as File, replace });
               try {
-                await ingest.mutateAsync({ file: file as File });
-                message.success("Document envoyé — indexation en cours (quelques secondes)");
+                let res;
+                try {
+                  res = await send();
+                } catch (err) {
+                  // 409 : un document porte déjà ce nom. Le serveur ne l'écrase
+                  // plus tout seul — on demande confirmation avant de remplacer.
+                  const status = (err as { response?: { status?: number } })?.response?.status;
+                  if (status !== 409) throw err;
+                  const name = (file as File).name;
+                  if (!window.confirm(`« ${name} » existe déjà. Remplacer ses extraits ?`)) {
+                    onError?.(err as Error);
+                    return;
+                  }
+                  res = await send(true);
+                }
+                const chunks = (res as { chunks?: number })?.chunks ?? 0;
+                message.success(`Document indexé — ${chunks} extrait(s) interrogeables`);
                 onSuccess?.(undefined);
               } catch (err) {
                 message.error(apiErrorMessage(err, "Échec de l'envoi"));
@@ -382,7 +394,8 @@ export default function AssistantPage() {
             </p>
             <p className="ant-upload-text">Déposez un document PDF, DOCX ou TXT</p>
             <p className="ant-upload-hint">
-              Il sera découpé, vectorisé et interrogeable par l'assistant.
+              Il sera découpé et indexé en recherche plein-texte, puis interrogeable par
+              l'assistant.
             </p>
           </Upload.Dragger>
 

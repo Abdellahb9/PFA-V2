@@ -7,7 +7,6 @@ import type {
   AdminUser,
   AppNotification,
   Application,
-  AssistantResponse,
   Booking,
   CapacityForecast,
   Candidate,
@@ -362,17 +361,6 @@ export const useConversations = () =>
       ).data,
   });
 
-export const useAssistantQuery = () =>
-  useMutation({
-    mutationFn: async (body: {
-      query: string;
-      assignment_id?: number;
-      min_years_experience?: number;
-      education_level?: string;
-      top_k?: number;
-    }) => (await api.post<AssistantResponse>("/assistant/query", body)).data,
-  });
-
 export const useKnowledgeDocuments = () =>
   useQuery({
     queryKey: ["knowledge-documents"],
@@ -383,17 +371,25 @@ export const useKnowledgeDocuments = () =>
 export const useIngestKnowledgeDocument = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ file, title }: { file: File; title?: string }) => {
+    // `replace` doit être explicite : un titre déjà pris renvoie 409 plutôt que
+    // d'effacer en silence les extraits d'un autre document.
+    mutationFn: async ({
+      file,
+      title,
+      replace,
+    }: {
+      file: File;
+      title?: string;
+      replace?: boolean;
+    }) => {
       const form = new FormData();
       form.append("file", file);
       if (title) form.append("title", title);
+      if (replace) form.append("replace", "true");
       return (await api.post("/assistant/documents", form)).data;
     },
-    // Chunks appear once the Celery task finishes; refresh after a short delay too.
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["knowledge-documents"] });
-      setTimeout(() => qc.invalidateQueries({ queryKey: ["knowledge-documents"] }), 8000);
-    },
+    // L'ingestion est synchrone : les extraits sont là dès la réponse.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["knowledge-documents"] }),
   });
 };
 

@@ -40,8 +40,14 @@ export interface StoredConversation {
   }[];
 }
 
+/**
+ * Envoie UNIQUEMENT le nouveau message : les tours précédents sont relus côté
+ * serveur depuis la conversation. Poster l'historique affiché permettait de
+ * fabriquer de faux tours « assistant » et donc de dicter au modèle ce qu'il
+ * était censé avoir déjà répondu.
+ */
 export async function streamChat(
-  messages: ChatMessage[],
+  message: string,
   onEvent: (event: AgentEvent) => void,
   signal?: AbortSignal,
   conversationId?: number | null,
@@ -55,7 +61,7 @@ export async function streamChat(
       "content-type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ messages, conversation_id: conversationId ?? null }),
+    body: JSON.stringify({ message, conversation_id: conversationId ?? null }),
     signal,
   });
 
