@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { useMyApplications } from "@/api/hooks";
 import FadeIn from "@/components/FadeIn";
 import OffersBrowser from "@/components/OffersBrowser";
+import OfferSwitchPanel from "@/components/OfferSwitchPanel";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { logout, sessionCleared } from "@/store/authSlice";
 import type { ApplicationStatus, MyApplication } from "@/api/types";
@@ -144,6 +145,12 @@ export default function CandidatePortalPage() {
             ))}
           </FadeIn>
         )}
+
+        {/* --- Échange d'offre (seulement si un stage est déjà attribué) --- */}
+
+        <OfferSwitchPanel />
+
+        
 
         {/* --- Available offers (apply directly) --- */}
         <Typography.Title level={4} style={{ marginTop: 32 }}>

@@ -25,6 +25,7 @@ const MatchingPage = lazy(() => import("@/pages/MatchingPage"));
 const UsersPage = lazy(() => import("@/pages/UsersPage"));
 const AssistantPage = lazy(() => import("@/pages/AssistantPage"));
 const BookingsPage = lazy(() => import("@/pages/BookingsPage"));
+const OfferSwitchRequestsPage = lazy(() => import("@/pages/OfferSwitchRequests"));
 // Dev-only visual preview of the dashboard (mock data, no auth).
 const DevPreviewDashboard = import.meta.env.DEV
   ? lazy(() => import("@/pages/DevPreviewDashboard"))
@@ -94,6 +95,7 @@ export default function App() {
           <Route path="/matching" element={<MatchingPage />} />
           <Route path="/assistant" element={<AssistantPage />} />
           <Route path="/reservations" element={<BookingsPage />} />
+          <Route path="/demandes-echange" element={<OfferSwitchRequestsPage />} />
           <Route path="/utilisateurs" element={<UsersPage />} />
         </Route>
         {DevPreviewDashboard && (

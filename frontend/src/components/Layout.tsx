@@ -1,5 +1,5 @@
 // Main authenticated layout: sidebar navigation + header + content outlet.
-import { Layout, Menu, Avatar, Dropdown, Typography, theme } from "antd";
+import { Layout, Menu, Avatar, Badge, Dropdown, Typography, theme } from "antd";
 import {
   DashboardOutlined,
   FileTextOutlined,
@@ -12,6 +12,7 @@ import {
   UsergroupAddOutlined,
   RobotOutlined,
   CalendarOutlined,
+  SwapOutlined,
 } from "@ant-design/icons";
 import { Suspense } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -21,6 +22,7 @@ import RouteFallback from "@/components/RouteFallback";
 import ThemeToggle from "@/components/ThemeToggle";
 import NotificationsBell from "@/components/NotificationsBell";
 import { useThemeMode } from "@/theme/ThemeProvider";
+import { usePendingSwitchCount } from "@/api/hooks";
 
 const { Header, Sider, Content } = Layout;
 
@@ -34,6 +36,7 @@ const NAV = [
   { key: "/matching", icon: <DeploymentUnitOutlined />, label: "Affectation IA" },
   { key: "/assistant", icon: <RobotOutlined />, label: "Assistant RAG" },
   { key: "/reservations", icon: <CalendarOutlined />, label: "Offres réservées" },
+  { key: "/demandes-echange", icon: <SwapOutlined />, label: "Demandes d’échange" },
 ];
 // Admin-only navigation item (user management).
 const ADMIN_NAV = { key: "/utilisateurs", icon: <UsergroupAddOutlined />, label: "Utilisateurs" };
@@ -43,7 +46,22 @@ export default function AppLayout() {
   const location = useLocation();
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.auth.user);
-  const navItems = user?.role === "admin" ? [...NAV, ADMIN_NAV] : NAV;
+  // La pastille signale les demandes d’échange à traiter ; le compteur n’est
+  // interrogé que pour le personnel, qui seul voit la page.
+  const isStaff = user?.role === "admin" || user?.role === "recruiter";
+  const { data: pendingSwitches } = usePendingSwitchCount(Boolean(isStaff));
+  const navItems = (user?.role === "admin" ? [...NAV, ADMIN_NAV] : NAV).map((item) =>
+    item.key === "/demandes-echange" && pendingSwitches
+      ? {
+          ...item,
+          label: (
+            <Badge count={pendingSwitches} size="small" offset={[10, 0]}>
+              <span>{item.label}</span>
+            </Badge>
+          ),
+        }
+      : item,
+  );
   const { mode } = useThemeMode();
   const { token } = theme.useToken();
 

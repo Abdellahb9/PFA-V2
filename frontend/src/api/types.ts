@@ -338,3 +338,49 @@ export interface KnowledgeDocument {
   source_document: string;
   chunks: number;
 }
+
+// ---- Échange d'offre ----
+export type SwitchRequestStatus = "pending" | "approved" | "rejected";
+
+/** Vue candidat : uniquement ses propres demandes. */
+export interface MySwitchRequest {
+  id: string;
+  status: SwitchRequestStatus;
+  admin_note: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  current_offer_title: string;
+  requested_offer_title: string;
+}
+
+export interface MySwitchRequests {
+  placement: { applicationId: number; offerId: number; offerTitle: string } | null;
+  requests: MySwitchRequest[];
+}
+
+/** Vue personnel : identité du candidat + URL signée de la preuve. */
+export interface OfferSwitchRequest {
+  id: string;
+  status: SwitchRequestStatus;
+  admin_note: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  candidate_id: number | null;
+  candidate_name: string;
+  candidate_email: string | null;
+  current_offer_id: number | null;
+  current_offer_title: string;
+  requested_offer_id: number | null;
+  requested_offer_title: string;
+  proof_url: string | null;
+}
+
+export interface AppNotification {
+  id: number;
+  type: string;
+  title: string;
+  body: string | null;
+  read: boolean;
+  created_at: string;
+}

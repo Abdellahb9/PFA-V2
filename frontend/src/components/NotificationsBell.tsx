@@ -7,10 +7,10 @@
 // d'emblée tout l'historique.
 import { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Dropdown, Empty, List, Tag, Tooltip, Typography, theme } from "antd";
-import { BellOutlined, UserAddOutlined } from "@ant-design/icons";
+import { BellOutlined, SwapOutlined, UserAddOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
-import { useNewCandidates } from "@/api/hooks";
-import type { Candidate } from "@/api/types";
+import { useMarkNotificationRead, useNewCandidates, useNotifications } from "@/api/hooks";
+import type { AppNotification, Candidate } from "@/api/types";
 
 const SEEN_KEY = "candidates-seen-at";
 const MAX_SHOWN = 8;
@@ -41,6 +41,10 @@ export default function NotificationsBell() {
   const navigate = useNavigate();
   const { token } = theme.useToken();
   const { data } = useNewCandidates();
+  // Notifications persistées (demandes d’échange…) : elles portent leur propre
+  // état « lu » en base, indépendant du repère local des nouveaux candidats.
+  const { data: notifs } = useNotifications();
+  const markRead = useMarkNotificationRead();
   const [seenAt, setSeenAt] = useState<string>(readSeenAt);
   const [open, setOpen] = useState(false);
 
@@ -51,18 +55,27 @@ export default function NotificationsBell() {
     return rows.slice(0, MAX_SHOWN);
   }, [data]);
 
-  const unseen = useMemo(
+  const unreadNotifs = (notifs ?? []).filter((n) => !n.read);
+
+  const unseenCandidates = useMemo(
     () => (data ?? []).filter((c) => c.created_at && String(c.created_at) > seenAt).length,
     [data, seenAt],
   );
 
-  // Ouvrir le panneau vaut lecture.
+  const unseen = unseenCandidates + unreadNotifs.length;
+
+  // Ouvrir le panneau vaut lecture, côté navigateur comme côté base.
   useEffect(() => {
-    if (!open || !unseen) return;
-    const now = new Date().toISOString();
-    localStorage.setItem(SEEN_KEY, now);
-    setSeenAt(now);
-  }, [open, unseen]);
+    if (!open) return;
+    if (unseenCandidates) {
+      const now = new Date().toISOString();
+      localStorage.setItem(SEEN_KEY, now);
+      setSeenAt(now);
+    }
+    unreadNotifs.forEach((n) => markRead.mutate(n.id));
+    // markRead/unreadNotifs changent à chaque rendu : seule l’ouverture compte.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const isUnseen = (c: Candidate) => Boolean(c.created_at && String(c.created_at) > seenAt);
 
@@ -78,6 +91,41 @@ export default function NotificationsBell() {
         padding: 8,
       }}
     >
+      {notifs && notifs.length > 0 && (
+        <>
+          <div style={{ padding: "6px 8px 10px" }}>
+            <Typography.Text strong>Notifications</Typography.Text>
+          </div>
+          <List
+            size="small"
+            dataSource={notifs.slice(0, MAX_SHOWN)}
+            renderItem={(n: AppNotification) => (
+              <List.Item
+                style={{ cursor: "pointer", paddingInline: 8 }}
+                onClick={() => {
+                  setOpen(false);
+                  if (n.type.startsWith("offer_switch")) navigate("/demandes-echange");
+                }}
+              >
+                <List.Item.Meta
+                  avatar={<SwapOutlined style={{ color: token.colorPrimary, fontSize: 18 }} />}
+                  title={
+                    <span>
+                      {n.title} {!n.read && <Tag color="green">nouveau</Tag>}
+                    </span>
+                  }
+                  description={
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {n.body} · {relative(n.created_at)}
+                    </Typography.Text>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        </>
+      )}
+
       <div style={{ padding: "6px 8px 10px" }}>
         <Typography.Text strong>Nouveaux candidats</Typography.Text>
       </div>

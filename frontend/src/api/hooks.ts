@@ -2,8 +2,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import { submitApplicationViaStorage, submitApplicationsBulkViaStorage } from "./upload";
+import { supabase, STORAGE_BUCKET } from "@/lib/supabase";
 import type {
   AdminUser,
+  AppNotification,
   Application,
   AssistantResponse,
   Booking,
@@ -15,7 +17,9 @@ import type {
   KnowledgeDocument,
   MatchingResult,
   MyApplication,
+  MySwitchRequests,
   Offer,
+  OfferSwitchRequest,
   OfferRanking,
   PublicOffer,
 } from "./types";
@@ -399,5 +403,95 @@ export const useDeleteKnowledgeDocument = () => {
     mutationFn: async (sourceDocument: string) =>
       (await api.delete(`/assistant/documents/${encodeURIComponent(sourceDocument)}`)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["knowledge-documents"] }),
+  });
+};
+
+// ---- Échange d'offre ----
+// Téléverse la preuve dans le bucket privé, puis dépose la demande. L'image ne
+// transite pas par nos fonctions : URL signée -> upload direct -> chemin envoyé.
+export const useCreateSwitchRequest = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ requested_offer_id, file }: { requested_offer_id: number; file: File }) => {
+      const { data: up } = await api.post<{ path: string; token: string }>(
+        "/create-switch-proof-upload-url",
+        { filename: file.name },
+      );
+      const { error } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .uploadToSignedUrl(up.path, up.token, file);
+      if (error) throw error;
+      return (
+        await api.post("/offer-switch-requests", {
+          requested_offer_id,
+          proof_image_path: up.path,
+        })
+      ).data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["my-switch-requests"] }),
+  });
+};
+
+export const useMySwitchRequests = () =>
+  useQuery({
+    queryKey: ["my-switch-requests"],
+    queryFn: async () => (await api.get<MySwitchRequests>("/my-switch-requests")).data,
+  });
+
+// Vue personnel. `status` vaut "pending" | "approved" | "rejected" | "all".
+export const useSwitchRequests = (status = "all") =>
+  useQuery({
+    queryKey: ["switch-requests", status],
+    queryFn: async () =>
+      (await api.get<OfferSwitchRequest[]>("/offer-switch-requests", { params: { status } })).data,
+  });
+
+// Compteur pour la pastille du menu : léger, rafraîchi périodiquement.
+export const usePendingSwitchCount = (enabled: boolean) =>
+  useQuery({
+    queryKey: ["switch-requests", "pending"],
+    queryFn: async () =>
+      (await api.get<OfferSwitchRequest[]>("/offer-switch-requests", { params: { status: "pending" } }))
+        .data.length,
+    enabled,
+    refetchInterval: 60_000,
+  });
+
+export const useReviewSwitchRequest = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      action,
+      admin_note,
+    }: {
+      id: string;
+      action: "approve" | "reject";
+      admin_note?: string;
+    }) => (await api.post(`/offer-switch-requests/${id}/${action}`, { admin_note })).data,
+    onSuccess: () => {
+      // Une approbation déplace une affectation : les vues qui en dépendent
+      // afficheraient sinon l'ancienne offre.
+      qc.invalidateQueries({ queryKey: ["switch-requests"] });
+      qc.invalidateQueries({ queryKey: ["applications"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["offers"] });
+    },
+  });
+};
+
+// ---- Notifications ----
+export const useNotifications = () =>
+  useQuery({
+    queryKey: ["notifications"],
+    queryFn: async () => (await api.get<AppNotification[]>("/notifications")).data,
+    refetchInterval: 60_000,
+  });
+
+export const useMarkNotificationRead = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => (await api.post(`/notifications/${id}/read`, {})).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   });
 };

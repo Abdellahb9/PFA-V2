@@ -10,6 +10,10 @@ import type { Candidate } from "@/api/types";
 const candidates = vi.hoisted(() => ({ value: [] as Candidate[] }));
 vi.mock("@/api/hooks", () => ({
   useNewCandidates: () => ({ data: candidates.value }),
+  // Ces tests portent sur le compteur des candidats : pas de notification
+  // persistée ici, sinon elle s’ajouterait à la pastille.
+  useNotifications: () => ({ data: [] }),
+  useMarkNotificationRead: () => ({ mutate: vi.fn() }),
 }));
 
 import NotificationsBell from "@/components/NotificationsBell";
