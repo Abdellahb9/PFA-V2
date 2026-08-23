@@ -21,6 +21,10 @@ import createUploadUrl from "../netlify/functions/create-upload-url";
 import analyzeBackground from "../netlify/functions/analyze-application-background";
 import assistant from "../netlify/functions/assistant";
 import bookings from "../netlify/functions/bookings";
+import offerSwitchRequests from "../netlify/functions/offer-switch-requests";
+import mySwitchRequests from "../netlify/functions/my-switch-requests";
+import notifications from "../netlify/functions/notifications";
+import createSwitchProofUploadUrl from "../netlify/functions/create-switch-proof-upload-url";
 
 // Handlers are the Netlify v2 defaults; they only read `ctx.params` at runtime,
 // so `ctx` is loosely typed here to accept every handler signature.
@@ -55,6 +59,13 @@ const routes: Route[] = [
 
   { re: /^\/api\/users\/([^/]+)\/?$/, fn: users, keys: ["id"] },
   { re: /^\/api\/users\/?$/, fn: users },
+
+  { re: /^\/api\/offer-switch-requests\/([^/]+)\/([^/]+)\/?$/, fn: offerSwitchRequests, keys: ["id", "action"] },
+  { re: /^\/api\/offer-switch-requests\/?$/, fn: offerSwitchRequests },
+  { re: /^\/api\/my-switch-requests\/?$/, fn: mySwitchRequests },
+  { re: /^\/api\/notifications\/([^/]+)\/read\/?$/, fn: notifications, keys: ["id"] },
+  { re: /^\/api\/notifications\/?$/, fn: notifications },
+  { re: /^\/api\/create-switch-proof-upload-url\/?$/, fn: createSwitchProofUploadUrl },
 
   { re: /^\/api\/bookings\/?$/, fn: bookings },
   { re: /^\/api\/offer-rankings\/?$/, fn: offerRankings },
