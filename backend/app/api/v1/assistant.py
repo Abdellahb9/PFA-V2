@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_staff
+from app.api.deps import require_staff
 from app.core.database import get_db
 from app.models.document_chunk import DocumentChunk
 from app.models.user import User
@@ -33,9 +33,15 @@ _ALLOWED_CONTENT_TYPES = {
 def assistant_query(
     payload: AssistantQueryRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_staff),
 ):
-    """Answer a natural-language question via intent routing over the RAG skills."""
+    """Answer a natural-language question via intent routing over the RAG skills.
+
+    Staff only : la compétence candidate_search renvoie le profil, la formation
+    et les compétences de TOUS les candidats, et matching_explanation le détail
+    du score de n'importe quelle affectation. Un simple utilisateur authentifié
+    y lisait les dossiers des autres.
+    """
     return answer_query(
         db,
         query=payload.query,

@@ -2,6 +2,12 @@
 
 A lightweight stopword heuristic — no dependency, deterministic, and good
 enough for short assistant queries. Ties default to French (primary audience).
+
+Contrepartie serverless : ``detectLanguage`` dans
+``netlify/functions/_shared/rag.ts``. Les deux listes de mots ont déjà divergé
+une fois (« était » n'existe que côté Python) : toute modification de l'une doit
+être reportée sur l'autre, ou les deux déploiements répondront dans des langues
+différentes à la même question.
 """
 
 from __future__ import annotations

@@ -17,6 +17,8 @@ from app.services.rag.language import detect_language
 
 logger = logging.getLogger(__name__)
 
+_MAX_CONTEXT_CHARS = 12000
+
 # Guardrails baked into every prompt: answer in the user's language, ground
 # every claim in the provided context, cite sources, and say "I don't know"
 # instead of guessing.
@@ -71,16 +73,38 @@ def generate_answer(intent: str, query: str, results: list[dict] | dict | None) 
         try:
             prompt = _PROMPTS[intent].format(
                 query=query,
-                context=json.dumps(results, ensure_ascii=False, indent=2)[:12000],
+                context=_context_json(results),
                 lang_instruction=_LANG_INSTRUCTION[lang],
                 no_answer=_NO_ANSWER_SENTENCE[lang],
             )
-            response = llm_module._build_llm().invoke(prompt)
+            response = llm_module.build_llm().invoke(prompt)
             return getattr(response, "content", str(response)).strip()
+        except llm_module.LLMConfigurationError:
+            # Déploiement fautif, pas incident réseau : le masquer derrière un
+            # gabarit a laissé cette branche muette pendant toute sa vie.
+            raise
         except Exception as exc:  # pragma: no cover - network failures
             logger.warning("LLM generation failed, using template: %s", exc)
 
     return _template_answer(intent, results, lang)
+
+
+def _context_json(results: list[dict] | dict) -> str:
+    """Sérialise le contexte en restant sous la limite SANS casser le JSON.
+
+    Tronquer la chaîne sérialisée produisait un JSON invalide (coupure au milieu
+    d'une valeur) : on retire des éléments entiers.
+    """
+    dump = json.dumps(results, ensure_ascii=False, indent=2)
+    if len(dump) <= _MAX_CONTEXT_CHARS or not isinstance(results, list):
+        return dump
+    kept = list(results)
+    while len(kept) > 1:
+        kept = kept[:-1]
+        dump = json.dumps(kept, ensure_ascii=False, indent=2)
+        if len(dump) <= _MAX_CONTEXT_CHARS:
+            return dump
+    return dump
 
 
 def _empty_answer(intent: str, lang: str = "fr") -> str:
@@ -146,6 +170,27 @@ _T = {
 }
 
 
+def _pct(value: object) -> str:
+    """Pourcentage tolérant : ``None``, texte ou Decimal ne doivent pas lever.
+
+    ``score_breakdown`` est un JSONB nullable et non validé : une valeur stockée
+    en texte ("0.8") faisait remonter un ``ValueError`` jusqu'à l'API. Comme la
+    voie LLM était elle-même hors service, ce gabarit est le SEUL chemin réel —
+    il ne peut pas se permettre de planter sur une donnée inattendue.
+    """
+    try:
+        return f"{float(value):.0%}"  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return "?"
+
+
+def _num(value: object) -> str:
+    try:
+        return f"{float(value):.0f}"  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return "?"
+
+
 def _template_answer(intent: str, results: list[dict] | dict, lang: str = "fr") -> str:
     """Deterministic fallback answer when no LLM provider is configured."""
     t = _T[lang]
@@ -153,40 +198,46 @@ def _template_answer(intent: str, results: list[dict] | dict, lang: str = "fr") 
     if intent == "candidate_search":
         lines = [t["top_candidates"]]
         for r in results:
-            skills = ", ".join(r["skills"][:8]) or t["no_skills"]
+            skills = ", ".join(r.get("skills") or [])[:400] or t["no_skills"]
             lines.append(
-                f"- {r['name']} ({t['similarity']} {r['similarity']:.0%}) — "
-                f"{r['education_level'] or t['unknown_level']}, "
-                f"{r['years_experience']:.0f} {t['years_exp']}. "
+                f"- {r.get('name') or t['unknown']} ({t['similarity']} {_pct(r.get('similarity'))}) — "
+                f"{r.get('education_level') or t['unknown_level']}, "
+                f"{_num(r.get('years_experience'))} {t['years_exp']}. "
                 f"{t['skills']} : {skills}."
             )
         return "\n".join(lines)
 
     if intent == "matching_explanation":
         b = results.get("score_breakdown") or {}
-        weights = b.get("weights", {})
-        cand, offer = results["candidate"], results["offer"]
-        matched = sorted(set(cand["skills"]) & set(offer["required_skills"]))
-        missing = sorted(set(offer["required_skills"]) - set(cand["skills"]))
+        weights = b.get("weights") or {}
+        cand = results.get("candidate") or {}
+        offer = results.get("offer") or {}
+        cand_skills = set(cand.get("skills") or [])
+        required = set(offer.get("required_skills") or [])
+        matched = sorted(cand_skills & required)
+        missing = sorted(required - cand_skills)
         header = t["score_for"].format(
-            score=f"{results['match_score']:.0%}", name=cand["name"], title=offer["title"]
+            score=_pct(results.get("match_score")),
+            name=cand.get("name") or t["unknown"],
+            title=offer.get("title") or t["unspecified"],
         )
         return (
             f"{header}\n"
-            f"- {t['semantic']} : {b.get('semantic', 0):.0%} "
+            f"- {t['semantic']} : {_pct(b.get('semantic', 0))} "
             f"({t['weight']} {weights.get('semantic', '?')})\n"
-            f"- {t['skill_coverage']} : {b.get('skills', 0):.0%} "
+            f"- {t['skill_coverage']} : {_pct(b.get('skills', 0))} "
             f"({t['weight']} {weights.get('skills', '?')}) — "
             f"{t['matched']} : {', '.join(matched) or t['none']} ; "
             f"{t['missing']} : {', '.join(missing) or t['none']}\n"
-            f"- {t['education_fit']} : {b.get('education', 0):.0%} "
+            f"- {t['education_fit']} : {_pct(b.get('education', 0))} "
             f"({t['weight']} {weights.get('education', '?')}) — "
-            f"{t['candidate']} : {cand['education_level'] or t['unknown']}, "
-            f"{t['required']} : {offer['min_education_level'] or t['unspecified']}"
+            f"{t['candidate']} : {cand.get('education_level') or t['unknown']}, "
+            f"{t['required']} : {offer.get('min_education_level') or t['unspecified']}"
         )
 
     # policy_qa: quote the best chunks with their sources rather than generate.
     lines = [t["extracts"]]
     for r in results:
-        lines.append(f"- [{r['source_document']}] {r['text'][:400].strip()}…")
+        text = (r.get("text") or "")[:400].strip()
+        lines.append(f"- [{r.get('source_document') or t['unknown']}] {text}…")
     return "\n".join(lines)

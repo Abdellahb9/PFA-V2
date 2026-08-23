@@ -51,7 +51,10 @@ def ingest_document(
     embeddings = embed_batch(chunks)
 
     db.query(DocumentChunk).filter(DocumentChunk.source_document == source_document).delete()
-    for index, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=False)):
+    # strict=True : un lot d'embeddings plus court que la liste d'extraits
+    # tronquait silencieusement la fin du document, tandis que le log annonçait
+    # le nombre d'extraits VOULU. Mieux vaut échouer que mentir.
+    for index, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=True)):
         db.add(
             DocumentChunk(
                 source_document=source_document,

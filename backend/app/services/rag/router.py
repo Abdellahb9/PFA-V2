@@ -63,11 +63,13 @@ def classify_intent(query: str, assignment_id: int | None = None) -> str:
     # Ambiguous or no keyword hit: one cheap LLM call when available.
     if llm_module.is_enabled():
         try:
-            response = llm_module._build_llm().invoke(_CLASSIFY_PROMPT.format(query=query[:1000]))
+            response = llm_module.build_llm().invoke(_CLASSIFY_PROMPT.format(query=query[:1000]))
             content = getattr(response, "content", "").strip().lower()
             for intent in INTENTS:
                 if intent in content:
                     return intent
+        except llm_module.LLMConfigurationError:
+            raise  # fournisseur mal configuré : le silence a déjà trop duré
         except Exception as exc:  # pragma: no cover - network failures
             logger.warning("Intent classification via LLM failed: %s", exc)
 
