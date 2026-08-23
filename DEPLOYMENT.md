@@ -29,10 +29,23 @@ Aucun serveur, Docker, Celery, Redis, MinIO ni PyTorch. Coût ≈ 0 (tiers gratu
 | `VITE_SUPABASE_URL` | build frontend | identique à `SUPABASE_URL` |
 | `VITE_SUPABASE_ANON_KEY` | build frontend | Supabase → Settings → API → `anon` |
 | `VITE_API_URL` | build frontend | `/api` |
+| `RESEND_API_KEY` | fonctions (**secret**) | resend.com → API Keys |
+| `MAIL_FROM` | fonctions | ex. `Fondation Phosboucraa <stages@phosboucraa.org>` — le domaine doit être vérifié chez Resend |
+| `OFFICE_NAME` | fonctions | nom du bureau où déposer les documents |
+| `OFFICE_ADDRESS` | fonctions | adresse postale affichée dans l'e-mail |
+| `OFFICE_CONTACT` | fonctions | téléphone ou e-mail de contact |
+| `DOCS_DEADLINE_DAYS` *(optionnel)* | fonctions | entier, ex. `5` — omis, aucune phrase de délai |
 
 > Les variables `VITE_*` sont **intégrées au bundle client** au build (publiques
-> par conception). Ne mettez **jamais** `SUPABASE_SERVICE_ROLE_KEY` ni
-> `GROQ_API_KEY` dans une variable `VITE_*`.
+> par conception). Ne mettez **jamais** `SUPABASE_SERVICE_ROLE_KEY`,
+> `GROQ_API_KEY` ni `RESEND_API_KEY` dans une variable `VITE_*`.
+
+> Les six dernières variables ne servent qu'à l'e-mail envoyé au stagiaire
+> après un échange d'offre approuvé. Si `RESEND_API_KEY` ou `MAIL_FROM`
+> manque, l'envoi est ignoré avec un avertissement dans les logs :
+> **l'approbation elle-même aboutit quand même**. Les trois `OFFICE_*`
+> apparaissent en clair dans le message ; non renseignées, elles s'affichent
+> comme `[OFFICE_NAME — à renseigner]`, visible sans être bloquant.
 
 ## 2. Supabase (DB + Storage + Auth)
 

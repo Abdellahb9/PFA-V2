@@ -28,11 +28,21 @@ create table if not exists public.offer_switch_requests (
   admin_note text,
   reviewed_by text,
   reviewed_at timestamptz,
+  -- Envoi de l'e-mail au stagiaire après approbation. email_sent_at fait office
+  -- de verrou d'idempotence : on n'envoie que s'il est NULL.
+  email_sent_at timestamptz,
+  email_error text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   -- Un échange vers l'offre déjà occupée n'a pas de sens.
   constraint offer_switch_distinct_offers check (current_offer_id <> requested_offer_id)
 );
+
+-- Rattrapage : si cette migration a déjà été appliquée avant l'ajout des deux
+-- colonnes ci-dessus, le create table est sauté et elles manqueraient.
+alter table public.offer_switch_requests
+  add column if not exists email_sent_at timestamptz,
+  add column if not exists email_error text;
 
 create index if not exists ix_switch_requests_status
   on public.offer_switch_requests (status, created_at desc);

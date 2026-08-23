@@ -132,6 +132,42 @@ Vérifier ensuite dans l'interface que **Candidatures**, **Offres réservées** 
 le **Tableau de bord** montrent la nouvelle offre (les caches React Query sont
 invalidés à l'approbation).
 
+## 5 bis. L'e-mail au stagiaire
+
+Prérequis : les variables du tableau de [DEPLOYMENT.md](../DEPLOYMENT.md) §1
+(`RESEND_API_KEY`, `MAIL_FROM`, les trois `OFFICE_*`, éventuellement
+`DOCS_DEADLINE_DAYS`) doivent être posées sur l'hôte. Chez Resend, le domaine
+de `MAIL_FROM` doit être vérifié, sinon l'API renvoie 422.
+
+Astuce pour tester sans domaine : Resend accepte `onboarding@resend.dev` comme
+expéditeur, mais uniquement vers l'adresse du compte Resend. Mettez donc cette
+adresse dans `candidates.email` du candidat de test.
+
+1. Approuver un échange (étape 5).
+2. Le stagiaire reçoit un message intitulé « Échange d'offre approuvé — dépôt
+   de vos documents », en français, annonçant la nouvelle offre et son
+   département, puis les coordonnées du bureau.
+3. Vérifier la trace en base :
+
+```sql
+select status, email_sent_at, email_error from offer_switch_requests
+where id = '<REQUEST_ID>';
+-- approuvée : email_sent_at renseigné, email_error à NULL
+```
+
+Cas à vérifier :
+
+| Situation | Attendu |
+| --- | --- |
+| `RESEND_API_KEY` absente | Approbation **réussie** quand même ; `email_sent_at` reste NULL, `email_error` mentionne la variable manquante, un avertissement apparaît dans les logs de la fonction |
+| Domaine `MAIL_FROM` non vérifié | Approbation réussie ; `email_error` contient « HTTP 422 » |
+| `DOCS_DEADLINE_DAYS` non définie | Le message ne comporte aucune phrase de délai |
+| `OFFICE_*` non définies | Le message affiche `[OFFICE_NAME — à renseigner]` — lisible, non bloquant |
+| Candidat sans compte `auth.users` | L'e-mail part quand même : il est adressé à `candidates.email`, alors que la notification in-app, elle, est sautée |
+
+L'e-mail **ne remplace pas** la notification in-app : les deux partent. Aucun
+échec d'envoi ne peut annuler un échange déjà commité.
+
 ## 6. Concurrence — le garde-fou
 
 Le cas qui justifie la RPC : deux demandes visant la **dernière place** d'une

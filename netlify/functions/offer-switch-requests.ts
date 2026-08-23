@@ -10,6 +10,7 @@ import { json, fail, readBody } from "./_shared/http";
 import { loadCandidateProfiles, loadOfferProfiles } from "./_shared/db";
 import { compositeScore } from "./_shared/scoring";
 import { checkTargetOffer, readPlacement, rpcErrorMessage } from "./_shared/offer-switch";
+import { notifySwitchApproved } from "./_shared/switch-email";
 
 export const config = {
   path: ["/api/offer-switch-requests", "/api/offer-switch-requests/:id/:action"],
@@ -225,7 +226,7 @@ async function review(req: Request, id: string, action: string, reviewer: string
   // c'est elle qui protège de deux approbations simultanées.
   const { data: target } = await sb
     .from("internship_offers")
-    .select("id, title, slots, status")
+    .select("id, title, slots, status, department:departments(name)")
     .eq("id", request.requested_offer_id)
     .maybeSingle();
   const check = checkTargetOffer(
@@ -260,6 +261,22 @@ async function review(req: Request, id: string, action: string, reviewer: string
     const mapped = rpcErrorMessage(error.message);
     return fail(mapped.detail, mapped.status);
   }
+
+  // L'échange est commité. L'e-mail est un canal supplémentaire (la
+  // notification in-app reste posée par la RPC) : on l'attend pour pouvoir
+  // enregistrer email_sent_at, mais il ne peut ni échouer ni annuler quoi que
+  // ce soit — notifySwitchApproved avale tout.
+  const row = (approved ?? {}) as Record<string, unknown>;
+  const dept = Array.isArray(target?.department) ? target?.department[0] : target?.department;
+  await notifySwitchApproved({
+    requestId: String(row.id ?? id),
+    candidateId: Number(row.candidate_id ?? request.candidate_id),
+    status: String(row.status ?? "approved"),
+    emailSentAt: (row.email_sent_at as string | null) ?? null,
+    newOfferTitle: target?.title ?? "votre nouvelle offre",
+    departmentName: (dept as { name?: string } | null)?.name ?? null,
+  });
+
   return json(approved);
 }
 
