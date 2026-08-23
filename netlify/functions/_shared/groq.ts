@@ -44,10 +44,19 @@ export function groqEnabled(): boolean {
   return Boolean(process.env.GROQ_API_KEY);
 }
 
+// Un client par appel ouvrait un pool HTTP neuf à chaque requête, sans jamais
+// réutiliser de connexion. On le mémoïse pour la durée de vie de l'instance.
+let _client: Groq | null = null;
+
+export function groqClient(): Groq {
+  if (!_client) _client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  return _client;
+}
+
 export async function extractProfile(cvText: string): Promise<ExtractedProfile | null> {
   if (!groqEnabled()) return null;
   try {
-    const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    const client = groqClient();
     const res = await client.chat.completions.create({
       model: EXTRACT_MODEL,
       temperature: 0,

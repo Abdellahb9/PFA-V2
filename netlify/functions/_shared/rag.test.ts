@@ -1,41 +1,8 @@
-// Unit tests for the RAG assistant's pure logic (no Supabase / Groq calls).
+// Logique pure du socle RAG (ni Supabase, ni Groq).
 import { describe, expect, it } from "vitest";
-import {
-  candidateEmptyAnswer,
-  chunkText,
-  classifyIntent,
-  detectLanguage,
-  emptyAnswer,
-  templateAnswer,
-} from "./rag";
+import { candidateEmptyAnswer, chunkText, detectLanguage } from "./rag";
 import type { CandidateSearchDiag } from "./rag";
-import type { CandidateSource } from "./rag";
 
-describe("classifyIntent (keyword path, no GROQ_API_KEY)", () => {
-  it("forces matching_explanation when an assignment id is given", async () => {
-    expect(await classifyIntent("n'importe quoi", 42)).toBe("matching_explanation");
-  });
-
-  it("detects candidate search queries (FR + EN)", async () => {
-    expect(await classifyIntent("Trouve-moi un candidat Python avec 3 ans d'expérience")).toBe(
-      "candidate_search",
-    );
-    expect(await classifyIntent("find candidates who know react")).toBe("candidate_search");
-  });
-
-  it("detects score explanation queries", async () => {
-    expect(await classifyIntent("Pourquoi ce score de matching ?")).toBe("matching_explanation");
-  });
-
-  it("detects policy questions", async () => {
-    expect(await classifyIntent("Quelle est la durée maximale d'un stage ?")).toBe("policy_qa");
-    expect(await classifyIntent("Quelle est la politique de gratification ?")).toBe("policy_qa");
-  });
-
-  it("defaults to policy_qa without keywords", async () => {
-    expect(await classifyIntent("bonjour")).toBe("policy_qa");
-  });
-});
 
 describe("chunkText", () => {
   it("returns nothing for empty input", () => {
@@ -45,6 +12,26 @@ describe("chunkText", () => {
 
   it("keeps a short document as a single chunk", () => {
     expect(chunkText("Un règlement de stage court.")).toEqual(["Un règlement de stage court."]);
+  });
+
+  // Math.max sur des index choisit le séparateur le PLUS À DROITE (toujours une
+  // espace), jamais le plus prioritaire : la coupure par paragraphe annoncée en
+  // commentaire n'avait jamais lieu et les extraits partaient au milieu d'une phrase.
+  it("coupe sur la fin de paragraphe quand il y en a une dans la fenêtre", () => {
+    const para = "Article 1. La duree du stage est de six mois maximum. ".repeat(18); // ~950 c.
+    const chunks = chunkText(para.trimEnd() + "\n\n" + "SUITE ".repeat(200));
+    expect(chunks[0].endsWith("maximum.")).toBe(true);
+    expect(chunks[0]).not.toContain("SUITE");
+  });
+
+  it("retombe sur la fin de phrase puis sur l'espace faute de paragraphe", () => {
+    const sentences = "La convention precise la duree. ".repeat(60); // ~1900 c., aucun \n
+    const chunks = chunkText(sentences);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0].endsWith("duree.")).toBe(true);
+
+    const noBreaks = "A".repeat(4000); // ni paragraphe, ni phrase, ni espace
+    expect(chunkText(noBreaks).every((c) => c.length <= 1600)).toBe(true);
   });
 
   it("splits long documents into overlapping chunks covering all content", () => {
@@ -73,30 +60,12 @@ describe("detectLanguage", () => {
   it("defaults to French on ambiguous input", () => {
     expect(detectLanguage("python sql docker")).toBe("fr");
   });
-});
 
-describe("bilingual answers", () => {
-  const candidate: CandidateSource = {
-    type: "candidate",
-    candidate_id: 1,
-    name: "Amina El Idrissi",
-    education_level: "Bac+5",
-    field_of_study: "Informatique",
-    years_experience: 3,
-    skills: ["python", "sql"],
-    similarity: 0.9,
-  };
-
-  it("templates candidate search in both languages", () => {
-    expect(templateAnswer("candidate_search", [candidate], "fr")).toContain("pertinents");
-    expect(templateAnswer("candidate_search", [candidate], "en")).toContain(
-      "Most relevant candidates",
-    );
-  });
-
-  it("gives empty answers in both languages", () => {
-    expect(emptyAnswer("policy_qa", "fr")).toContain("Je ne trouve pas");
-    expect(emptyAnswer("policy_qa", "en")).toContain("I cannot find");
+  // Le bonus d'accents ne testait que des caractères minuscules, mais sur le
+  // texte BRUT : une question en capitales ne marquait aucun point français.
+  it("compte les accents quelle que soit la casse", () => {
+    expect(detectLanguage("DURÉE MAXIMALE DU STAGE")).toBe("fr");
+    expect(detectLanguage("PROCÉDURE DE RÉMUNÉRATION")).toBe("fr");
   });
 });
 

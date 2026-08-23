@@ -1,5 +1,6 @@
-// Assistant RAG: unified query endpoint + knowledge-base document management.
-// POST   /api/assistant/query               any authenticated user
+// Assistant RAG : conversation en flux + gestion de la base documentaire.
+// POST   /api/assistant/chat                staff (l'assistant lit toute la base)
+// GET    /api/assistant/conversations       fils de l'appelant uniquement
 // GET    /api/assistant/documents           staff
 // POST   /api/assistant/documents           staff (multipart: file [+ title])
 // DELETE /api/assistant/documents/:name     staff
@@ -10,55 +11,88 @@ import { extractCvText } from "./_shared/cv";
 import { runAgent, sanitizeHistory } from "./_shared/agent";
 import {
   getConversation,
+  getHistory,
   listConversations,
   resolveConversation,
   saveMessage,
 } from "./_shared/conversations";
-import {
-  classifyIntent,
-  detectLanguage,
-  generateAnswer,
-  getScoreBreakdown,
-  ingestDocumentText,
-  candidateEmptyAnswer,
-  retrieveCandidates,
-  retrieveDocChunks,
-} from "./_shared/rag";
+import { ingestDocumentText, listDocumentCounts } from "./_shared/rag";
 
 export const config = {
   path: [
     "/api/assistant/chat",
     "/api/assistant/conversations",
     "/api/assistant/conversations/:id",
-    "/api/assistant/query",
     "/api/assistant/documents",
     "/api/assistant/documents/:name",
   ],
 };
 
+// Un message d'assistant coûte jusqu'à 5 appels LLM facturés plus autant de
+// requêtes de recherche. Sans plafond, un seul compte peut vider le quota.
+const RATE_LIMIT_PER_HOUR = 60;
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+async function checkRateLimit(userId: string): Promise<Response | null> {
+  const since = new Date(Date.now() - 3600_000).toISOString();
+  const { count, error } = await admin()
+    .from("assistant_messages")
+    .select("id, conversation:assistant_conversations!inner(user_id)", {
+      count: "exact",
+      head: true,
+    })
+    .eq("role", "user")
+    .eq("conversation.user_id", userId)
+    .gte("created_at", since);
+  // Le compteur ne doit jamais bloquer l'assistant s'il échoue lui-même.
+  if (error) {
+    console.error("rate limit check failed:", error.message);
+    return null;
+  }
+  if ((count ?? 0) >= RATE_LIMIT_PER_HOUR) {
+    return fail(
+      `Trop de questions à l'assistant (${RATE_LIMIT_PER_HOUR}/heure). Réessayez plus tard.`,
+      429,
+    );
+  }
+  return null;
+}
+
 // Conversation en flux (SSE). Chaque événement est une ligne `data: {json}`.
-// Le format one-shot /query est conservé pour compatibilité.
 async function handleChat(req: Request, userId: string): Promise<Response> {
   const body = await readBody(req);
-  const history = sanitizeHistory(body.messages);
-  if (!history.length) return fail("Conversation vide");
-  const last = history[history.length - 1];
-  if (last.role !== "user") {
-    return fail("Le dernier message doit venir de l'utilisateur");
-  }
+  // Le client n'envoie QUE son nouveau message. Les tours précédents sont relus
+  // en base : un historique fourni par le navigateur permettrait de forger de
+  // faux tours « assistant » et donc de dicter au modèle ce qu'il a « déjà dit ».
+  const message = String(body.message ?? "").trim();
+  if (!message) return fail("Message vide");
 
   const conversationId = await resolveConversation(
     userId,
     body.conversation_id != null ? Number(body.conversation_id) : null,
-    last.content,
+    message,
   );
-  await saveMessage(conversationId, { role: "user", content: last.content });
+  // getHistory refiltre sur user_id : un id deviné ne donne pas le fil d'autrui.
+  // sanitizeHistory borne ensuite la taille — un tour enregistré n'a pas de
+  // limite de longueur en base, et rien ne doit gonfler le contexte sans borne.
+  const history = sanitizeHistory([
+    ...(await getHistory(userId, conversationId)),
+    { role: "user", content: message },
+  ]);
+  await saveMessage(conversationId, { role: "user", content: message });
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: unknown) =>
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      // Le flux peut être coupé par le client à tout moment : une écriture sur
+      // un contrôleur fermé lève, y compris depuis le `catch`. On absorbe.
+      const send = (event: unknown) => {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        } catch {
+          /* client parti : plus rien à diffuser */
+        }
+      };
       // Le fil est annoncé en premier : le client peut le retenir même si la
       // génération échoue ensuite.
       send({ type: "conversation", conversation_id: conversationId });
@@ -66,19 +100,11 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
       const tools: string[] = [];
       let sources: unknown[] = [];
       try {
-        for await (const event of runAgent(history)) {
+        for await (const event of runAgent(history, req.signal)) {
           if (event.type === "delta") answer += event.text;
           else if (event.type === "tool") tools.push(event.name);
           else if (event.type === "sources") sources = event.sources;
           send(event);
-        }
-        if (answer.trim()) {
-          await saveMessage(conversationId, {
-            role: "assistant",
-            content: answer,
-            tools,
-            sources,
-          });
         }
       } catch (err) {
         send({
@@ -87,7 +113,21 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
         });
         send({ type: "done" });
       } finally {
-        controller.close();
+        // Une réponse partielle vaut mieux qu'un tour perdu : on enregistre ce
+        // qui a été produit, même si le flux s'est interrompu en cours de route.
+        if (answer.trim()) {
+          await saveMessage(conversationId, {
+            role: "assistant",
+            content: answer,
+            tools,
+            sources,
+          });
+        }
+        try {
+          controller.close();
+        } catch {
+          /* déjà fermé */
+        }
       }
     },
   });
@@ -103,52 +143,6 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
   });
 }
 
-async function handleQuery(req: Request): Promise<Response> {
-  const body = await readBody(req);
-  const query = String(body.query ?? "").trim();
-  if (query.length < 2) return fail("Question trop courte");
-  const assignmentId = body.assignment_id != null ? Number(body.assignment_id) : null;
-  const topK = Math.min(20, Math.max(1, Number(body.top_k ?? 5)));
-
-  const intent = await classifyIntent(query, assignmentId);
-
-  if (intent === "matching_explanation") {
-    if (assignmentId == null) {
-      return json({
-        intent,
-        answer:
-          detectLanguage(query) === "fr"
-            ? "Précisez l'affectation concernée (assignment_id) pour obtenir l'explication du score."
-            : "Provide the assignment_id of the assignment to explain its score.",
-        sources: [],
-      });
-    }
-    const result = await getScoreBreakdown(assignmentId);
-    return json({
-      intent,
-      answer: await generateAnswer(intent, query, result),
-      sources: result ? [result] : [],
-    });
-  }
-
-  if (intent === "candidate_search") {
-    const { results, diag } = await retrieveCandidates(query, {
-      minYearsExperience: body.min_years_experience != null ? Number(body.min_years_experience) : null,
-      educationLevel: body.education_level ?? null,
-      topK,
-    });
-    // An empty result explains which filter removed the candidates rather than
-    // leaving the recruiter to guess.
-    const answer = results.length
-      ? await generateAnswer(intent, query, results)
-      : candidateEmptyAnswer(diag, detectLanguage(query));
-    return json({ intent, answer, sources: results, diagnostic: diag });
-  }
-
-  const results = await retrieveDocChunks(query, topK);
-  return json({ intent, answer: await generateAnswer(intent, query, results), sources: results });
-}
-
 async function handleUpload(req: Request): Promise<Response> {
   let form: FormData;
   try {
@@ -162,30 +156,46 @@ async function handleUpload(req: Request): Promise<Response> {
   if (!/\.(pdf|docx|txt)$/.test(name)) {
     return fail("Format non supporté (PDF, DOCX ou TXT attendu)", 415);
   }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return fail(`Fichier trop volumineux (maximum ${MAX_UPLOAD_BYTES / 1024 / 1024} Mo)`, 413);
+  }
 
   const sourceDocument = String(form.get("title") ?? "").trim() || file.name || "document";
+  // Réutiliser un titre existant remplaçait silencieusement les extraits d'un
+  // autre document. On l'exige explicitement plutôt que de le deviner.
+  if (String(form.get("replace") ?? "") !== "true") {
+    const { count } = await admin()
+      .from("document_chunks")
+      .select("id", { count: "exact", head: true })
+      .eq("source_document", sourceDocument);
+    if (count) {
+      return fail(
+        `Un document nommé « ${sourceDocument} » existe déjà. Renommez-le, ou renvoyez la ` +
+          `requête avec replace=true pour le remplacer.`,
+        409,
+      );
+    }
+  }
+
   const data = new Uint8Array(await file.arrayBuffer());
   const text = await extractCvText(data, file.name);
   if (!text.trim()) return fail("Aucun texte extrait du document");
 
-  // Chunking + insertion are fast without embeddings — run synchronously.
+  // Découpage + insertion sont rapides sans embeddings : traitement synchrone,
+  // donc 200 et non 202 — il n'y a aucune tâche de fond à suivre.
   const chunks = await ingestDocumentText(sourceDocument, text);
-  return json({ source_document: sourceDocument, task_id: "sync", status: "ingested", chunks }, 202);
+  return json({ source_document: sourceDocument, status: "ingested", chunks });
 }
 
 async function listDocuments(): Promise<Response> {
-  const sb = admin();
-  const { data, error } = await sb.from("document_chunks").select("source_document");
-  if (error) return fail(error.message, 500);
-  const counts = new Map<string, number>();
-  for (const r of data ?? []) {
-    counts.set(r.source_document, (counts.get(r.source_document) ?? 0) + 1);
+  // Le comptage se fait en SQL : ramener toutes les lignes pour les compter en
+  // JS plafonnait à la limite de lignes de PostgREST, ce qui faussait les
+  // totaux et pouvait faire disparaître un document entier de la liste.
+  try {
+    return json(await listDocumentCounts());
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "Erreur base documentaire", 500);
   }
-  return json(
-    [...counts.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([source_document, chunks]) => ({ source_document, chunks })),
-  );
 }
 
 async function deleteDocument(name: string): Promise<Response> {
@@ -203,10 +213,15 @@ async function deleteDocument(name: string): Promise<Response> {
 export default async (req: Request, ctx: { params?: Record<string, string> }): Promise<Response> => {
   const { pathname } = new URL(req.url);
 
+  // L'assistant interroge TOUTE la base (profils, réservations, scores) : il est
+  // réservé au personnel. Un candidat authentifié y lisait les profils de ses
+  // concurrents, leurs universités et leurs affectations.
   if (pathname.endsWith("/chat")) {
-    const user = await requireUser(req);
+    const user = await requireStaff(req);
     if (user instanceof Response) return user;
     if (req.method !== "POST") return methodNotAllowed();
+    const limited = await checkRateLimit(user.id);
+    if (limited) return limited;
     return handleChat(req, user.id);
   }
 
@@ -223,13 +238,6 @@ export default async (req: Request, ctx: { params?: Record<string, string> }): P
     return json(await listConversations(user.id));
   }
 
-  if (pathname.endsWith("/query")) {
-    const user = await requireUser(req);
-    if (user instanceof Response) return user;
-    if (req.method !== "POST") return methodNotAllowed();
-    return handleQuery(req);
-  }
-
   // Knowledge-base management is staff-only.
   const user = await requireStaff(req);
   if (user instanceof Response) return user;
@@ -237,7 +245,13 @@ export default async (req: Request, ctx: { params?: Record<string, string> }): P
   const name = ctx.params?.name;
   if (name) {
     if (req.method !== "DELETE") return methodNotAllowed();
-    return deleteDocument(decodeURIComponent(name));
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(name);
+    } catch {
+      return fail("Nom de document invalide");
+    }
+    return deleteDocument(decoded);
   }
   if (req.method === "GET") return listDocuments();
   if (req.method === "POST") return handleUpload(req);

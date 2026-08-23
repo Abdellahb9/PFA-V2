@@ -64,6 +64,44 @@ export async function saveMessage(
   if (error) console.error("message save failed:", error.message);
 }
 
+/**
+ * Tours précédents d'un fil, pour réalimenter l'agent.
+ *
+ * C'est la base qui fait foi, jamais le navigateur : un historique posté par le
+ * client permettrait de fabriquer de faux tours « assistant » et donc de faire
+ * croire au modèle qu'il a déjà affirmé quelque chose.
+ */
+export async function getHistory(
+  userId: string,
+  conversationId: number | null,
+  limit = 12,
+): Promise<{ role: "user" | "assistant"; content: string }[]> {
+  if (conversationId == null) return [];
+  const sb = admin();
+  const { data: conv } = await sb
+    .from("assistant_conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!conv) return [];
+
+  // Les `limit` derniers messages, remis dans l'ordre chronologique.
+  const { data, error } = await sb
+    .from("assistant_messages")
+    .select("role, content")
+    .eq("conversation_id", conversationId)
+    .order("id", { ascending: false })
+    .limit(limit);
+  if (error) {
+    console.error("history read failed:", error.message);
+    return [];
+  }
+  return (data ?? [])
+    .reverse()
+    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+}
+
 export async function listConversations(userId: string, limit = 20) {
   const { data, error } = await admin()
     .from("assistant_conversations")

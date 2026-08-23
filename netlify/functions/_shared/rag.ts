@@ -1,17 +1,19 @@
-// RAG assistant core for the serverless stack (Supabase + Groq, no vectors).
+// Socle de RÉCUPÉRATION du RAG serverless (Supabase). Aucune génération ici :
+// c'est l'agent (./agent.ts) qui parle au modèle, ce module ne fait que fournir
+// les données sur lesquelles il s'appuie.
 //
-// Mirrors backend/app/services/rag/: one retrieval backbone with three skills.
-// Retrieval differs by necessity — no embedding model in a function, so:
-//   candidate_search        skill/keyword matching over candidates + skills
-//   matching_explanation    reads assignments.score_breakdown (no retrieval)
-//   policy_qa               Postgres full-text search over document_chunks
-// Generation uses Groq when GROQ_API_KEY is set, else deterministic French
-// templates — the assistant stays functional without any LLM key.
-import Groq from "groq-sdk";
+// Trois sources, toutes interrogées côté Postgres :
+//   retrieveCandidates    RPC search_candidates    (FTS pondérée + trigrammes)
+//   getScoreBreakdown     lecture de assignments.score_breakdown
+//   retrieveDocChunks     RPC search_document_chunks (FTS bilingue)
+//
+// La pertinence renvoyée (`similarity`) est un score ABSOLU issu de ts_rank_cd,
+// comparable d'une requête à l'autre — surtout pas une valeur normalisée sur le
+// meilleur résultat, qui afficherait 100 % même pour un extrait hors sujet.
+// Le pendant Python de ce module est backend/app/services/rag/retriever.py ; il
+// s'appuie sur pgvector et ses scores ne sont donc PAS sur la même échelle.
 import { admin } from "./supabase";
-import { ASSISTANT_MODEL, groqEnabled } from "./groq";
 
-export type Intent = "candidate_search" | "matching_explanation" | "policy_qa";
 export type Lang = "fr" | "en";
 
 // ---- Query-language detection (stopword heuristic; ties default to French) ---
@@ -28,60 +30,17 @@ const EN_WORDS = new Set(
 );
 
 export function detectLanguage(text: string): Lang {
-  const words = text.toLowerCase().match(/[a-zà-ÿ']+/g) ?? [];
+  const lower = text.toLowerCase();
+  const words = lower.match(/[a-zà-ÿ']+/g) ?? [];
   let fr = words.filter((w) => FR_WORDS.has(w)).length;
   const en = words.filter((w) => EN_WORDS.has(w)).length;
-  fr += (text.match(/[àâçéèêëîïôùûüÿœ]/g) ?? []).length; // accents → French
+  // Accents → français. Compté sur la version en minuscules : la classe ne liste
+  // que des minuscules, donc une question en capitales ne marquait aucun point.
+  fr += (lower.match(/[àâçéèêëîïôùûüÿœ]/g) ?? []).length;
   return en > fr ? "en" : "fr";
 }
 
-// ---- Intent classification (ported from backend rag/router.py) --------------
-
-const PATTERNS: Record<Intent, RegExp> = {
-  candidate_search:
-    /\b(candidat|profil|cherche|trouve|recherch\w*|qui (a|sait|maitrise)|candidate|find|search|experience|expérience|compétence|skill)\w*\b/gi,
-  matching_explanation:
-    /\b(score|matching|affectation|assignment|pourquoi|explique|explain|justifi\w*|breakdown)\b/gi,
-  policy_qa:
-    /\b(politique|policy|procédure|process(us)?|règle|regle|rule|durée|duree|convention|gratification|rémunération|remuneration|document|charte|combien de (temps|mois|semaines)|comment (faire|demander|obtenir))\b/gi,
-};
-
-const CLASSIFY_PROMPT = (q: string) =>
-  "Classify this HR assistant query into exactly one category. Reply with the " +
-  "category name only.\nCategories: candidate_search (find/filter candidate " +
-  "profiles), matching_explanation (explain a candidate-offer matching score), " +
-  `policy_qa (question about internship policy/process documents).\nQuery: ${q.slice(0, 1000)}`;
-
-export async function classifyIntent(query: string, assignmentId?: number | null): Promise<Intent> {
-  if (assignmentId != null) return "matching_explanation";
-
-  const scores = (Object.keys(PATTERNS) as Intent[]).map((intent) => ({
-    intent,
-    hits: (query.match(PATTERNS[intent]) ?? []).length,
-  }));
-  scores.sort((a, b) => b.hits - a.hits);
-  if (scores[0].hits > 0 && scores[0].hits > scores[1].hits) return scores[0].intent;
-
-  if (groqEnabled()) {
-    try {
-      const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
-      const res = await client.chat.completions.create({
-        model: ASSISTANT_MODEL,
-        temperature: 0,
-        messages: [{ role: "user", content: CLASSIFY_PROMPT(query) }],
-      });
-      const content = (res.choices[0]?.message?.content ?? "").toLowerCase();
-      for (const intent of Object.keys(PATTERNS) as Intent[]) {
-        if (content.includes(intent)) return intent;
-      }
-    } catch (err) {
-      console.error("Intent classification via Groq failed:", err);
-    }
-  }
-  return scores[0].hits > 0 ? scores[0].intent : "policy_qa";
-}
-
-// ---- Skill 1: candidate search ----------------------------------------------
+// ---- Source 1 : recherche de candidats ---------------------------------------
 
 export interface CandidateSource {
   type: "candidate";
@@ -91,10 +50,9 @@ export interface CandidateSource {
   field_of_study: string | null;
   years_experience: number;
   skills: string[];
-  similarity: number; // share of query terms matched, in [0, 1]
+  /** Score ABSOLU ts_rank_cd dans [0, 1[ — comparable d'une requête à l'autre. */
+  similarity: number;
 }
-
-const MIN_YEARS_RE = /(\d+)\s*(?:\+|ans?|years?)/i;
 
 /** Why a search came back empty — a bare "no results" hides the real cause. */
 export interface CandidateSearchDiag {
@@ -108,107 +66,102 @@ export interface CandidateSearchDiag {
   minYears: number | null;
 }
 
+interface CandidateRow {
+  candidate_id: number;
+  name: string;
+  education_level: string | null;
+  field_of_study: string | null;
+  years_experience: number | string | null;
+  skills: string[] | null;
+  rank: number | string | null;
+}
+
+/**
+ * Recherche de candidats, entièrement déléguée à Postgres (RPC search_candidates).
+ *
+ * Les filtres `min_years` / `education` partent avec la requête : ils sont
+ * appliqués en SQL, pas après coup sur un jeu de lignes déjà rapatrié. Le
+ * diagnostic n'est demandé QUE si le résultat est vide — c'est un comptage sur
+ * toute la table, inutile de le payer sur le chemin nominal.
+ */
 export async function retrieveCandidates(
   query: string,
   opts: { minYearsExperience?: number | null; educationLevel?: string | null; topK?: number } = {},
 ): Promise<{ results: CandidateSource[]; diag: CandidateSearchDiag }> {
   const sb = admin();
-  const topK = opts.topK ?? 5;
-  const { data: rows, error } = await sb
-    .from("candidates")
-    .select(
-      "id, first_name, last_name, education_level, field_of_study, university, years_experience, cv_text, candidate_skills(skill:skills(name))",
-    );
+  const minYears = opts.minYearsExperience ?? null;
+  const education = opts.educationLevel ?? null;
+
+  const { data, error } = await sb.rpc("search_candidates", {
+    q: query,
+    min_years: minYears,
+    education,
+    top_k: opts.topK ?? 5,
+  });
   if (error) throw new Error(error.message);
 
-  // Terms from the query (3+ chars) matched against skills / field / CV text.
-  const terms = [
-    ...new Set(
-      query
-        .toLowerCase()
-        .split(/[^a-zà-ÿ0-9+#.]+/i)
-        .filter((t) => t.length >= 3),
-    ),
-  ];
-  const minYears =
-    opts.minYearsExperience ??
-    (MIN_YEARS_RE.test(query) ? parseInt(query.match(MIN_YEARS_RE)![1], 10) : null);
+  const results: CandidateSource[] = ((data ?? []) as CandidateRow[]).map((r) => ({
+    type: "candidate",
+    candidate_id: r.candidate_id,
+    name: r.name,
+    education_level: r.education_level,
+    field_of_study: r.field_of_study,
+    years_experience: Number(r.years_experience ?? 0),
+    skills: r.skills ?? [],
+    similarity: Math.round(Number(r.rank ?? 0) * 10000) / 10000,
+  }));
 
-  const scored: CandidateSource[] = [];
-  const diag: CandidateSearchDiag = {
-    scanned: (rows ?? []).length,
-    termMatches: 0,
-    excludedByYears: 0,
-    excludedByEducation: 0,
-    experienceUnknown: 0,
-    minYears,
-  };
-
-  for (const r of rows ?? []) {
-    const years = Number(r.years_experience ?? 0);
-
-    const skills = (r.candidate_skills ?? [])
-      .map((cs: { skill: { name: string } | { name: string }[] | null }) => {
-        const s = cs.skill;
-        return Array.isArray(s) ? s[0]?.name : s?.name;
-      })
-      .filter(Boolean)
-      .sort() as string[];
-    const haystackSkills = skills.map((s) => s.toLowerCase());
-    // education_level et university font partie du champ de recherche : sans
-    // eux, « quels candidats ont un niveau Bac+5 ? » ne matchait personne alors
-    // que la colonne porte exactement cette valeur.
-    const haystackText =
-      `${r.field_of_study ?? ""} ${r.education_level ?? ""} ${r.university ?? ""} ${r.cv_text ?? ""}`.toLowerCase();
-
-    let hits = 0;
-    for (const term of terms) {
-      if (haystackSkills.some((s) => s.includes(term))) hits += 2; // skill hits weigh double
-      else if (haystackText.includes(term)) hits += 1;
-    }
-    // Une recherche purement structurée (« tous les Bac+5 ») est légitime :
-    // quand un filtre explicite est fourni, on n'exige pas de mot en commun.
-    const filterOnly = opts.educationLevel != null || opts.minYearsExperience != null;
-    if (hits === 0 && !filterOnly) continue;
-    diag.termMatches++;
-
-    // Filters are applied AFTER term matching so an empty result can say which
-    // one actually removed the candidates.
-    if (minYears != null && years < minYears) {
-      diag.excludedByYears++;
-      // years_experience defaults to 0 and is only filled when the CV analysis
-      // could determine it — 0 means "unknown" as often as it means "none".
-      if (years === 0) diag.experienceUnknown++;
-      continue;
-    }
-    if (
-      opts.educationLevel &&
-      !(r.education_level ?? "").toLowerCase().includes(opts.educationLevel.toLowerCase())
-    ) {
-      diag.excludedByEducation++;
-      continue;
-    }
-
-    scored.push({
-      type: "candidate",
-      candidate_id: r.id,
-      name: `${r.first_name} ${r.last_name}`.trim(),
-      education_level: r.education_level,
-      field_of_study: r.field_of_study,
-      years_experience: years,
-      skills,
-      // Un profil retenu sur le seul critère structuré n'a pas de score de
-      // recouvrement : on le donne à 0,5 plutôt qu'à 0, qui se lirait comme
-      // « aucun rapport » alors qu'il satisfait exactement le filtre.
-      similarity: hits === 0 ? 0.5 : Math.min(1, hits / Math.max(1, terms.length)),
-    });
+  if (results.length) {
+    return { results, diag: { ...EMPTY_DIAG, scanned: results.length, termMatches: results.length, minYears } };
   }
-  return {
-    results: scored.sort((a, b) => b.similarity - a.similarity).slice(0, topK),
-    diag,
-  };
+  return { results, diag: await candidateDiag(query, minYears, education) };
 }
 
+const EMPTY_DIAG: CandidateSearchDiag = {
+  scanned: 0,
+  termMatches: 0,
+  excludedByYears: 0,
+  excludedByEducation: 0,
+  experienceUnknown: 0,
+  minYears: null,
+};
+
+interface DiagRow {
+  scanned: number | string;
+  term_matches: number | string;
+  excluded_by_years: number | string;
+  excluded_by_education: number | string;
+  experience_unknown: number | string;
+}
+
+/** Comptages expliquant une recherche vide. Le diagnostic ne doit jamais lever. */
+async function candidateDiag(
+  query: string,
+  minYears: number | null,
+  education: string | null,
+): Promise<CandidateSearchDiag> {
+  try {
+    const { data, error } = await admin().rpc("search_candidates_diag", {
+      q: query,
+      min_years: minYears,
+      education,
+    });
+    if (error) throw new Error(error.message);
+    const row = (data as DiagRow[] | null)?.[0];
+    if (!row) return { ...EMPTY_DIAG, minYears };
+    return {
+      scanned: Number(row.scanned),
+      termMatches: Number(row.term_matches),
+      excludedByYears: Number(row.excluded_by_years),
+      excludedByEducation: Number(row.excluded_by_education),
+      experienceUnknown: Number(row.experience_unknown),
+      minYears,
+    };
+  } catch (err) {
+    console.error("candidate diagnostic failed:", err);
+    return { ...EMPTY_DIAG, minYears };
+  }
+}
 /** Empty-result message that names the cause instead of a bare "no results". */
 export function candidateEmptyAnswer(diag: CandidateSearchDiag, lang: Lang = "fr"): string {
   const fr = lang === "fr";
@@ -245,7 +198,9 @@ export function candidateEmptyAnswer(diag: CandidateSearchDiag, lang: Lang = "fr
       : `${diag.termMatches} candidate(s) match the search, but none have the requested ` +
           `education level.`;
   }
-  return emptyAnswer("candidate_search", lang);
+  return fr
+    ? "Aucun résultat ne correspond à cette recherche."
+    : "No results match this search.";
 }
 
 // ---- Skill 2: matching-score explanation -------------------------------------
@@ -325,6 +280,13 @@ export interface ChunkSource {
   similarity: number;
 }
 
+/**
+ * Seuil de pertinence absolu. Depuis que la recherche relie les termes par OU,
+ * un extrait partageant un seul mot courant avec la question ressort ; sans
+ * plancher il arrivait jusqu'au modèle et servait de « source » à la réponse.
+ */
+export const MIN_RELEVANCE = 0.02;
+
 export async function retrieveDocChunks(query: string, topK = 5): Promise<ChunkSource[]> {
   const sb = admin();
   const { data, error } = await sb.rpc("search_document_chunks", { q: query, top_k: topK });
@@ -333,15 +295,48 @@ export async function retrieveDocChunks(query: string, topK = 5): Promise<ChunkS
     source_document: string;
     chunk_index: number;
     chunk_text: string;
-    rank: number;
+    rank: number | string;
   }[];
-  const maxRank = Math.max(...rows.map((r) => r.rank), 0.0001);
-  return rows.map((r) => ({
-    type: "doc_chunk",
+
+  const chunks = rows.map((r) => ({
+    type: "doc_chunk" as const,
     source_document: r.source_document,
     chunk_index: r.chunk_index,
     text: r.chunk_text,
-    similarity: Math.round((r.rank / maxRank) * 10000) / 10000,
+    // Le rang est déjà borné dans [0, 1[ par ts_rank_cd : on le publie tel quel.
+    // Le normaliser sur le meilleur résultat plaçait TOUJOURS le premier extrait
+    // à 100 %, y compris quand il était hors sujet.
+    similarity: Math.round(Number(r.rank ?? 0) * 10000) / 10000,
+  }));
+
+  return dedupeAdjacent(chunks.filter((c) => c.similarity >= MIN_RELEVANCE));
+}
+
+/**
+ * Deux extraits voisins d'un même document partagent CHUNK_OVERLAP caractères :
+ * les garder tous deux consomme plusieurs des rares places de contexte pour
+ * répéter le même passage. On conserve le mieux classé.
+ */
+function dedupeAdjacent(chunks: ChunkSource[]): ChunkSource[] {
+  const kept: ChunkSource[] = [];
+  for (const c of chunks) {
+    const redundant = kept.some(
+      (k) => k.source_document === c.source_document && Math.abs(k.chunk_index - c.chunk_index) <= 1,
+    );
+    if (!redundant) kept.push(c);
+  }
+  return kept;
+}
+
+/** Documents ingérés et leur nombre d'extraits, comptés en SQL. */
+export async function listDocumentCounts(): Promise<
+  { source_document: string; chunks: number }[]
+> {
+  const { data, error } = await admin().rpc("list_document_chunk_counts");
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as { source_document: string; chunks: number | string }[]).map((r) => ({
+    source_document: r.source_document,
+    chunks: Number(r.chunks),
   }));
 }
 
@@ -359,15 +354,18 @@ export function chunkText(text: string): string[] {
   while (start < clean.length) {
     let end = Math.min(start + CHUNK_SIZE, clean.length);
     if (end < clean.length) {
-      // Prefer breaking on a paragraph, then sentence, then word boundary.
+      // Séparateurs par ORDRE DE PRIORITÉ, pas par position : un Math.max sur
+      // les index retenait toujours le plus à droite, donc la dernière espace.
+      // Les coupures par paragraphe et par phrase annoncées ici n'avaient donc
+      // jamais lieu et les extraits partaient au milieu d'une phrase.
       const window = clean.slice(start, end);
-      const breakAt = Math.max(
-        window.lastIndexOf("\n\n"),
-        window.lastIndexOf(". "),
-        window.lastIndexOf("\n"),
-        window.lastIndexOf(" "),
-      );
-      if (breakAt > CHUNK_SIZE / 2) end = start + breakAt + 1;
+      for (const sep of ["\n\n", ". ", "\n", " "]) {
+        const at = window.lastIndexOf(sep);
+        if (at > CHUNK_SIZE / 2) {
+          end = start + at + sep.length;
+          break;
+        }
+      }
     }
     const chunk = clean.slice(start, end).trim();
     if (chunk) chunks.push(chunk);
@@ -377,200 +375,19 @@ export function chunkText(text: string): string[] {
   return chunks;
 }
 
-/** Replace all chunks of `sourceDocument` with freshly chunked `text`. */
+/**
+ * Remplace tous les extraits de `sourceDocument` par ceux de `text`.
+ *
+ * Le suppression-puis-insertion se fait dans UNE transaction côté Postgres : en
+ * deux requêtes, une insertion en échec laissait le document supprimé et
+ * définitivement perdu, l'appelant ne recevant qu'une erreur 500.
+ */
 export async function ingestDocumentText(sourceDocument: string, text: string): Promise<number> {
-  const sb = admin();
   const chunks = chunkText(text);
-  const del = await sb.from("document_chunks").delete().eq("source_document", sourceDocument);
-  if (del.error) throw new Error(del.error.message);
-  if (chunks.length === 0) return 0;
-  const { error } = await sb.from("document_chunks").insert(
-    chunks.map((chunk, index) => ({
-      source_document: sourceDocument,
-      chunk_text: chunk,
-      chunk_index: index,
-    })),
-  );
+  const { data, error } = await admin().rpc("replace_document_chunks", {
+    p_source_document: sourceDocument,
+    p_chunks: chunks,
+  });
   if (error) throw new Error(error.message);
-  return chunks.length;
-}
-
-// ---- Generation (Groq or deterministic French templates) ----------------------
-
-const LANG_INSTRUCTION: Record<Lang, string> = {
-  fr: "Réponds en français.",
-  en: "Answer in English.",
-};
-
-const NO_ANSWER: Record<Lang, string> = {
-  fr: "Je ne trouve pas cette information dans les documents disponibles.",
-  en: "I cannot find this information in the available documents.",
-};
-
-const GEN_SYSTEM =
-  "Tu es l'assistant RH de PHOSBOUCRAA. Tu réponds uniquement à partir des " +
-  "données fournies, sans jamais inventer d'information, dans la langue de la question.";
-
-const GEN_PROMPTS: Record<Intent, (query: string, context: string, lang: Lang) => string> = {
-  candidate_search: (query, context, lang) =>
-    `Voici des profils de candidats retrouvés pour la requête d'un recruteur.\n` +
-    `Requête: ${query}\n\nProfils (JSON):\n${context}\n\n` +
-    `Résume les candidats les plus pertinents et pourquoi (compétences, expérience, ` +
-    `formation). Base-toi UNIQUEMENT sur ces données. ${LANG_INSTRUCTION[lang]}`,
-  matching_explanation: (query, context, lang) =>
-    `Explique pourquoi ce candidat a obtenu ce score de matching pour cette offre.\n` +
-    `Question: ${query}\n\nDonnées de l'affectation (JSON):\n${context}\n\n` +
-    `Appuie CHAQUE affirmation sur les chiffres du score_breakdown — n'invente ` +
-    `aucune qualité ou lacune qui n'y figure pas. ${LANG_INSTRUCTION[lang]}`,
-  policy_qa: (query, context, lang) =>
-    `Réponds à la question en te basant UNIQUEMENT sur les extraits ci-dessous.\n` +
-    `Question: ${query}\n\nExtraits (JSON, avec source_document):\n${context}\n\n` +
-    `Cite pour chaque élément le document source. Si les extraits ne permettent pas ` +
-    `de répondre, réponds exactement: "${NO_ANSWER[lang]}" — ne complète jamais ` +
-    `avec des connaissances externes. ${LANG_INSTRUCTION[lang]}`,
-};
-
-export async function generateAnswer(
-  intent: Intent,
-  query: string,
-  results: unknown[] | ExplanationSource | null,
-): Promise<string> {
-  const lang = detectLanguage(query);
-  const empty = Array.isArray(results) ? results.length === 0 : results == null;
-  if (empty) return emptyAnswer(intent, lang);
-
-  if (groqEnabled()) {
-    try {
-      const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
-      const res = await client.chat.completions.create({
-        model: ASSISTANT_MODEL,
-        temperature: 0,
-        messages: [
-          { role: "system", content: GEN_SYSTEM },
-          {
-            role: "user",
-            content: GEN_PROMPTS[intent](
-              query,
-              JSON.stringify(results, null, 2).slice(0, 12000),
-              lang,
-            ),
-          },
-        ],
-      });
-      const content = res.choices[0]?.message?.content?.trim();
-      if (content) return content;
-    } catch (err) {
-      console.error("Groq generation failed, using template:", err);
-    }
-  }
-  return templateAnswer(intent, results as never, lang);
-}
-
-export function emptyAnswer(intent: Intent, lang: Lang = "fr"): string {
-  if (intent === "policy_qa") return NO_ANSWER[lang];
-  if (intent === "matching_explanation") {
-    return lang === "fr"
-      ? "Affectation introuvable ou sans détail de score."
-      : "Assignment not found or missing a score breakdown.";
-  }
-  return lang === "fr"
-    ? "Aucun résultat ne correspond à cette recherche."
-    : "No results match this search.";
-}
-
-const pct = (v: unknown) => `${Math.round(Number(v ?? 0) * 100)}%`;
-
-// Per-language strings for the deterministic (no-Groq) answers.
-const T: Record<Lang, Record<string, string>> = {
-  fr: {
-    topCandidates: "Candidats les plus pertinents :",
-    relevance: "pertinence",
-    unknownLevel: "niveau inconnu",
-    yearsExp: "an(s) d'expérience",
-    skills: "Compétences",
-    noSkills: "aucune compétence détectée",
-    semantic: "Similarité sémantique",
-    skillCoverage: "Couverture des compétences",
-    weight: "poids",
-    matched: "acquises",
-    missing: "manquantes",
-    none: "aucune",
-    educationFit: "Adéquation formation",
-    candidate: "candidat",
-    required: "requis",
-    unknown: "inconnu",
-    unspecified: "non spécifié",
-    extracts: "Extraits pertinents des documents :",
-  },
-  en: {
-    topCandidates: "Most relevant candidates:",
-    relevance: "relevance",
-    unknownLevel: "unknown level",
-    yearsExp: "year(s) of experience",
-    skills: "Skills",
-    noSkills: "no skills detected",
-    semantic: "Semantic similarity",
-    skillCoverage: "Skill coverage",
-    weight: "weight",
-    matched: "matched",
-    missing: "missing",
-    none: "none",
-    educationFit: "Education fit",
-    candidate: "candidate",
-    required: "required",
-    unknown: "unknown",
-    unspecified: "unspecified",
-    extracts: "Relevant document extracts:",
-  },
-};
-
-const scoreHeader = (lang: Lang, score: string, name: string, title: string) =>
-  lang === "fr"
-    ? `Score de ${score} pour ${name} sur l'offre « ${title} » :`
-    : `Score of ${score} for ${name} on the offer “${title}”:`;
-
-export function templateAnswer(
-  intent: Intent,
-  results: CandidateSource[] | ChunkSource[] | ExplanationSource,
-  lang: Lang = "fr",
-): string {
-  const t = T[lang];
-
-  if (intent === "candidate_search") {
-    const rows = results as CandidateSource[];
-    return [
-      t.topCandidates,
-      ...rows.map(
-        (r) =>
-          `- ${r.name} (${t.relevance} ${pct(r.similarity)}) — ${r.education_level ?? t.unknownLevel}, ` +
-          `${Math.round(r.years_experience)} ${t.yearsExp}. ` +
-          `${t.skills} : ${r.skills.slice(0, 8).join(", ") || t.noSkills}.`,
-      ),
-    ].join("\n");
-  }
-
-  if (intent === "matching_explanation") {
-    const r = results as ExplanationSource;
-    const b = (r.score_breakdown ?? {}) as Record<string, unknown>;
-    const weights = (b.weights ?? {}) as Record<string, unknown>;
-    const matched = r.candidate.skills.filter((s) => r.offer.required_skills.includes(s));
-    const missing = r.offer.required_skills.filter((s) => !r.candidate.skills.includes(s));
-    const lines = [scoreHeader(lang, pct(r.match_score), r.candidate.name, r.offer.title)];
-    if (b.semantic !== undefined)
-      lines.push(`- ${t.semantic} : ${pct(b.semantic)} (${t.weight} ${weights.semantic ?? "?"})`);
-    lines.push(
-      `- ${t.skillCoverage} : ${pct(b.skills)} (${t.weight} ${weights.skills ?? "?"}) — ` +
-        `${t.matched} : ${matched.join(", ") || t.none} ; ${t.missing} : ${missing.join(", ") || t.none}`,
-      `- ${t.educationFit} : ${pct(b.education)} (${t.weight} ${weights.education ?? "?"}) — ` +
-        `${t.candidate} : ${r.candidate.education_level ?? t.unknown}, ` +
-        `${t.required} : ${r.offer.min_education_level ?? t.unspecified}`,
-    );
-    return lines.join("\n");
-  }
-
-  const chunks = results as ChunkSource[];
-  return [
-    t.extracts,
-    ...chunks.map((c) => `- [${c.source_document}] ${c.text.slice(0, 400).trim()}…`),
-  ].join("\n");
+  return Number(data ?? 0);
 }
