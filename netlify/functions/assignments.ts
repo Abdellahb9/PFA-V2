@@ -3,7 +3,8 @@ import type { Context } from "@netlify/functions";
 import { admin } from "./_shared/supabase";
 import { requireStaff } from "./_shared/auth";
 import { json, fail, readBody } from "./_shared/http";
-import { loadCandidateProfiles, loadOfferProfiles } from "./_shared/db";
+import { loadCandidateProfiles, loadOfferCapacity, loadOfferProfiles } from "./_shared/db";
+import { checkTargetOffer } from "./_shared/offer-switch";
 import { compositeScore } from "./_shared/scoring";
 
 export const config = { path: ["/api/assignments", "/api/assignments/:id"] };
@@ -58,6 +59,14 @@ export default async (req: Request, context: Context): Promise<Response> => {
     if (existing?.status === "confirmed") {
       return fail("Cette candidature est déjà confirmée ailleurs.", 409);
     }
+
+    // Confirmer, c'est occuper une place : rien ne l'empêchait de dépasser le
+    // nombre de postes de l'offre. Même garde que l'échange d'offre.
+    if (decision === "confirmed") {
+      const check = checkTargetOffer(await loadOfferCapacity(offerId));
+      if (!check.ok) return fail(check.detail, check.status);
+    }
+
     if (existing) await sb.from("assignments").delete().eq("id", existing.id);
 
     const { data, error } = await sb
@@ -91,6 +100,20 @@ export default async (req: Request, context: Context): Promise<Response> => {
     const body = await readBody(req);
     const status = (body.status ?? url.searchParams.get("status")) as string;
     if (!["confirmed", "rejected", "proposed"].includes(status)) return fail("Statut invalide", 422);
+
+    // L'offre est relue AVANT l'écriture : confirmer ne doit pas pouvoir
+    // dépasser le nombre de postes. L'affectation courante est exclue du
+    // comptage, sinon re-confirmer la ferait paraître complète.
+    if (status === "confirmed") {
+      const { data: current } = await sb
+        .from("assignments")
+        .select("id, offer_id")
+        .eq("id", id)
+        .maybeSingle();
+      if (!current) return fail("Affectation introuvable", 404);
+      const check = checkTargetOffer(await loadOfferCapacity(current.offer_id, current.id));
+      if (!check.ok) return fail(check.detail, check.status);
+    }
 
     const { data: a, error } = await sb
       .from("assignments")

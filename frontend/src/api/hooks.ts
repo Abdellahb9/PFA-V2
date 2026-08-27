@@ -327,10 +327,36 @@ export const useDecideProposal = () => {
       offer_id: number;
       status: "confirmed" | "rejected";
     }) => (await api.post("/assignments", body)).data,
+    // Confirmer change l'occupation de l'offre : sans invalider le classement
+    // par offre ni les affectations, ces écrans continuaient d'afficher le
+    // candidat comme non confirmé jusqu'au rechargement complet de la page.
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["applications"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["bookings"] });
+      qc.invalidateQueries({ queryKey: ["assignments"] });
+      qc.invalidateQueries({ queryKey: ["offer-rankings"] });
+    },
+  });
+};
+
+// Trancher une affectation DÉJÀ enregistrée, par son id.
+//
+// L'endpoint PATCH /assignments/:id existait sans aucun appelant : une
+// proposition créée depuis le classement par offre n'apparaissait pas dans
+// l'aperçu du moteur (état local, pas la base) et ne pouvait donc être
+// confirmée nulle part dans l'interface.
+export const useDecideAssignment = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: "confirmed" | "rejected" }) =>
+      (await api.patch(`/assignments/${id}`, { status })).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["bookings"] });
+      qc.invalidateQueries({ queryKey: ["applications"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["assignments"] });
+      qc.invalidateQueries({ queryKey: ["offer-rankings"] });
     },
   });
 };
@@ -344,6 +370,8 @@ export const useAssignCandidate = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["applications"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["assignments"] });
+      qc.invalidateQueries({ queryKey: ["offer-rankings"] });
     },
   });
 };

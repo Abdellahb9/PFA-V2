@@ -2,6 +2,36 @@
 import { admin } from "./supabase";
 import { canonicalize, categoryOf, normalize } from "./skills";
 import type { CandidateProfile, OfferProfile } from "./scoring";
+import type { OfferCapacity } from "./offer-switch";
+
+/**
+ * Offre + nombre de places déjà confirmées, pour `checkTargetOffer`.
+ *
+ * `excludeAssignmentId` sert à re-confirmer une affectation déjà confirmée sans
+ * qu'elle se compte elle-même et fasse paraître l'offre complète.
+ */
+export async function loadOfferCapacity(
+  offerId: number,
+  excludeAssignmentId?: number | null,
+): Promise<OfferCapacity | null> {
+  const sb = admin();
+  const { data: offer } = await sb
+    .from("internship_offers")
+    .select("id, title, slots, status")
+    .eq("id", offerId)
+    .maybeSingle();
+  if (!offer) return null;
+
+  let q = sb
+    .from("assignments")
+    .select("id", { count: "exact", head: true })
+    .eq("offer_id", offerId)
+    .eq("status", "confirmed");
+  if (excludeAssignmentId != null) q = q.neq("id", excludeAssignmentId);
+  const { count } = await q;
+
+  return { ...offer, confirmed: count ?? 0 };
+}
 
 export async function getOrCreateSkill(name: string): Promise<number> {
   const canonical = canonicalize(name);

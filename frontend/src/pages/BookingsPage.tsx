@@ -3,10 +3,25 @@
 // reads top-to-bottom, and the period filter keeps everything that OVERLAPS
 // the window (a running internship still shows in the month you ask for).
 import { useMemo, useState } from "react";
-import { Card, DatePicker, Empty, Select, Space, Table, Tag, Tooltip, Typography, theme } from "antd";
+import {
+  Button,
+  Card,
+  DatePicker,
+  Empty,
+  Popconfirm,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+  theme,
+} from "antd";
 import { CalendarOutlined, UserOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
-import { useBookings } from "@/api/hooks";
+import { useBookings, useDecideAssignment } from "@/api/hooks";
+import { apiErrorMessage } from "@/api/client";
 import SkeletonTable from "@/components/SkeletonTable";
 import type { Booking } from "@/api/types";
 
@@ -38,6 +53,22 @@ export default function BookingsPage() {
     from: range?.[0]?.format("YYYY-MM-DD"),
     to: range?.[1]?.format("YYYY-MM-DD"),
   });
+
+  const decide = useDecideAssignment();
+
+  const onDecide = async (b: Booking, next: "confirmed" | "rejected") => {
+    try {
+      await decide.mutateAsync({ id: b.assignment_id, status: next });
+      message.success(
+        next === "confirmed"
+          ? `${b.person_name} affecté à « ${b.offer_title} »`
+          : `Proposition rejetée pour ${b.person_name}`,
+      );
+    } catch (err) {
+      // L'offre complète remonte en 409 avec son décompte de places.
+      message.error(apiErrorMessage(err, "Décision impossible"));
+    }
+  };
 
   // Group by starting month, preserving the API's chronological order.
   const groups = useMemo(() => {
@@ -109,6 +140,32 @@ export default function BookingsPage() {
       render: (s: string) => (
         <Tag color={STATUS_META[s]?.color}>{STATUS_META[s]?.label ?? s}</Tag>
       ),
+    },
+    {
+      // Seul endroit de l'interface où une proposition enregistrée peut être
+      // tranchée : l'aperçu du moteur d'affectation ne montre que ses propres
+      // propositions, gardées en mémoire et jamais relues depuis la base.
+      title: "Action",
+      key: "action",
+      width: 190,
+      render: (_: unknown, b: Booking) =>
+        b.status !== "proposed" ? null : (
+          <Space size={4}>
+            <Popconfirm
+              title="Confirmer cette affectation ?"
+              okText="Confirmer"
+              cancelText="Annuler"
+              onConfirm={() => onDecide(b, "confirmed")}
+            >
+              <Button size="small" type="primary" loading={decide.isPending}>
+                Confirmer
+              </Button>
+            </Popconfirm>
+            <Button size="small" danger loading={decide.isPending} onClick={() => onDecide(b, "rejected")}>
+              Rejeter
+            </Button>
+          </Space>
+        ),
     },
   ];
 

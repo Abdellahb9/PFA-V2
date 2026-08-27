@@ -55,7 +55,9 @@ export default function MatchingPage() {
   const onAssign = async (applicationId: number, offerId: number) => {
     try {
       await assign.mutateAsync({ application_id: applicationId, offer_id: offerId });
-      message.success("Candidat proposé sur cette offre");
+      // Dire explicitement qu'il reste une étape : le message précédent laissait
+      // penser que le candidat était affecté pour de bon.
+      message.success("Proposition créée — à confirmer dans « Propositions à valider »");
       rankings.refetch();
     } catch (err) {
       message.error(apiErrorMessage(err, "Affectation impossible"));
@@ -222,13 +224,15 @@ export default function MatchingPage() {
       title: "Action",
       key: "action",
       render: (_: unknown, r: RankedCandidate) => (
+        // « Affecter » laissait croire à une décision définitive : cette action
+        // ne crée qu'une PROPOSITION (assignments.status = 'proposed'). La
+        // confirmation se prend dans le tableau des propositions ci-dessus.
         <Button
           size="small"
-          type="primary"
           loading={assign.isPending}
           onClick={() => onAssign(r.application_id, offerId)}
         >
-          Affecter
+          Proposer
         </Button>
       ),
     },
