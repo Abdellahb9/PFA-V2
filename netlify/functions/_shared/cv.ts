@@ -4,7 +4,15 @@ import mammoth from "mammoth";
 
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
 const PHONE_RE = /\+?\d[\d\s().-]{7,}\d/;
-const EXPERIENCE_RE = /(\d+)\+?\s*(?:ans|years|an)\b/i;
+
+// « N ans » tout seul est le plus souvent un ÂGE : un CV s'ouvrant sur
+// « MERIEM BEDDA 22 ans » donnait 22 années d'expérience. On exige donc un mot
+// de contexte (expérience / experience) collé au nombre, de part et d'autre.
+// `\b` devant le nombre : sans lui, « 2021 ans » livrait « 21 ».
+const EXPERIENCE_RE =
+  /(?:exp[ée]rience[^.\n]{0,20}?\b(\d{1,2})\s*\+?\s*(?:ans?|years?|yrs?)|\b(\d{1,2})\s*\+?\s*(?:ans?|years?|yrs?)[^.\n]{0,20}?d?['’]?\s*exp[ée]rience)/gi;
+// Au-delà, c'est une date, un âge ou une coquille — pas une carrière de stagiaire.
+const MAX_PLAUSIBLE_YEARS = 50;
 
 const UNIVERSITY_GENERIC =
   /((?:universit[ée]|facult[ée](?:\s+des\s+sciences[\w\s'’.-]*)?|[ée]cole\s+(?:nationale|sup[ée]rieure|polytechnique|mohammadia|d['’]ing[ée]nieurs)[\w\s'’.-]*|institut\s+(?:national|sup[ée]rieur)[\w\s'’.-]*)[\w\s'’.&,-]{0,40})/i;
@@ -39,9 +47,9 @@ export function regexHints(text: string): {
 } {
   const email = text.match(EMAIL_RE)?.[0] ?? null;
   const phone = text.match(PHONE_RE)?.[0]?.trim() ?? null;
-  const years = [...text.matchAll(new RegExp(EXPERIENCE_RE, "gi"))]
-    .map((m) => parseInt(m[1], 10))
-    .filter((n) => !Number.isNaN(n));
+  const years = [...text.matchAll(new RegExp(EXPERIENCE_RE))]
+    .map((m) => parseInt(m[1] ?? m[2], 10))
+    .filter((n) => !Number.isNaN(n) && n <= MAX_PLAUSIBLE_YEARS);
   const uni = text.match(UNIVERSITY_GENERIC)?.[1] ?? text.match(UNIVERSITY_ACRONYM)?.[1] ?? null;
   return {
     email,
