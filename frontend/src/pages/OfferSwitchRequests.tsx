@@ -212,7 +212,7 @@ export default function OfferSwitchRequestsPage() {
           confirmée vers l'offre demandée.
         </Typography.Paragraph>
 
-        {!isLoading && (data ?? []).length === 0 ? (
+        {!isLoading && (Array.isArray(data) ? data.length : 0) === 0 ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucune demande" />
         ) : (
           <SkeletonTable<OfferSwitchRequest>

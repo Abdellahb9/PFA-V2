@@ -471,12 +471,21 @@ export const useSwitchRequests = (status = "all") =>
   });
 
 // Compteur pour la pastille du menu : léger, rafraîchi périodiquement.
+//
+// Ce hook partage sa CLÉ avec `useSwitchRequests("pending")` — la page des
+// demandes ouvre justement sur ce filtre. Il stockait le nombre (`.data.length`)
+// là où la page attend le tableau : monté en permanence dans la barre latérale,
+// il écrasait le cache toutes les 60 s et la page recevait un entier comme
+// `dataSource`, ce qui faisait planter la table (`ee.some is not a function`).
+// Le cache conserve donc le TABLEAU, et `select` n'en dérive le compte que pour
+// ce composant — au passage, une seule requête sert les deux usages.
 export const usePendingSwitchCount = (enabled: boolean) =>
   useQuery({
     queryKey: ["switch-requests", "pending"],
     queryFn: async () =>
       (await api.get<OfferSwitchRequest[]>("/offer-switch-requests", { params: { status: "pending" } }))
-        .data.length,
+        .data,
+    select: (rows) => (Array.isArray(rows) ? rows.length : 0),
     enabled,
     refetchInterval: 60_000,
   });

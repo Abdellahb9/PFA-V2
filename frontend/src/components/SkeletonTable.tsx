@@ -20,8 +20,18 @@ export default function SkeletonTable<RecordType extends object>({
   fetching = false,
   skeletonRows = 6,
   columns = [],
+  dataSource,
   ...rest
 }: SkeletonTableProps<RecordType>) {
+  // AntD appelle `dataSource.some(...)` sans vérifier : toute valeur non-tableau
+  // — un cache React Query écrasé par un hook voisin, une réponse d'API d'une
+  // autre forme — faisait remonter un TypeError jusqu'à l'error boundary et
+  // emportait l'application entière. Un tableau vide est une dégradation
+  // acceptable ; un écran blanc ne l'est pas.
+  const rows = Array.isArray(dataSource) ? dataSource : undefined;
+  if (dataSource !== undefined && rows === undefined) {
+    console.error("SkeletonTable: dataSource n'est pas un tableau", dataSource);
+  }
   if (loading) {
     const placeholder = Array.from({ length: skeletonRows }, (_, i) => ({ key: i }));
     // Same columns, but each cell renders a skeleton block -> identical layout.
@@ -46,7 +56,7 @@ export default function SkeletonTable<RecordType extends object>({
 
   return (
     <div className="phos-fade-in">
-      <Table<RecordType> columns={columns} loading={fetching} {...rest} />
+      <Table<RecordType> columns={columns} loading={fetching} dataSource={rows} {...rest} />
     </div>
   );
 }
