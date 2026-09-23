@@ -15,6 +15,7 @@ import {
   Popconfirm,
   Progress,
   Row,
+  Skeleton,
   Space,
   Table,
   Tag,
@@ -437,12 +438,24 @@ export default function AssistantPage() {
           </Upload.Dragger>
 
           <div style={{ marginTop: 16 }}>
-            {docs.isError ? (
+            {/* Trois états DISTINCTS. « Aucun document indexé » est une
+                affirmation : on ne la prononce qu'une fois la réponse reçue.
+                Sans la branche de chargement, elle s'affichait dès la première
+                ouverture, pendant que la requête était encore en vol — et donc
+                en contradiction avec l'assistant, qui citait un document. */}
+            {docs.isLoading ? (
+              <Skeleton active paragraph={{ rows: 2 }} title={false} />
+            ) : docs.isError ? (
               <Alert
                 type="warning"
                 showIcon
                 message="Base documentaire indisponible"
-                description="L'API assistant n'est pas joignable."
+                description={apiErrorMessage(docs.error, "L'API assistant n'est pas joignable.")}
+                action={
+                  <Button size="small" onClick={() => docs.refetch()}>
+                    Réessayer
+                  </Button>
+                }
               />
             ) : !docs.data?.length ? (
               <Empty description="Aucun document indexé" />
