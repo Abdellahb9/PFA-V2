@@ -8,7 +8,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock("./supabase", () => ({ admin: () => ({ rpc }) }));
 
-import { MIN_RELEVANCE, retrieveCandidates, retrieveDocChunks } from "./rag";
+import {
+  MIN_CANDIDATE_RELEVANCE,
+  MIN_RELEVANCE,
+  retrieveCandidates,
+  retrieveDocChunks,
+} from "./rag";
 
 const ok = (data: unknown) => ({ data, error: null });
 
@@ -144,5 +149,54 @@ describe("retrieveDocChunks", () => {
   it("renvoie une liste vide quand rien ne correspond", async () => {
     rpc.mockResolvedValue(ok([]));
     expect(await retrieveDocChunks("xyzzy")).toEqual([]);
+  });
+});
+
+// Trois profils sans rapport ressortaient à 71 %, 55 % et 44 % sur « Quelle
+// filière de Babtich El Habib ? ». Le score fusionnait deux échelles
+// incomparables et aucun plancher n'écartait le bruit.
+describe("retrieveCandidates — plancher de pertinence", () => {
+  const row = (id: number, rank: number) => ({
+    candidate_id: id,
+    name: `Candidat ${id}`,
+    education_level: "Bac+5",
+    field_of_study: "Informatique",
+    years_experience: "2",
+    skills: ["python"],
+    rank,
+  });
+
+  it("écarte les profils sous le plancher", async () => {
+    rpc.mockImplementation((fn: string) =>
+      Promise.resolve(
+        fn === "search_candidates"
+          ? ok([row(1, 0.4), row(2, MIN_CANDIDATE_RELEVANCE / 2), row(3, 0.001)])
+          : ok([]),
+      ),
+    );
+
+    const { results } = await retrieveCandidates("babtich el habib");
+
+    expect(results.map((r) => r.candidate_id)).toEqual([1]);
+  });
+
+  it("ne renvoie RIEN plutôt qu'un tableau de bruit", async () => {
+    // Le cas constaté : que du bruit, rien au-dessus du plancher.
+    rpc.mockImplementation((fn: string) =>
+      Promise.resolve(fn === "search_candidates" ? ok([row(1, 0.02), row(2, 0.01)]) : ok([])),
+    );
+
+    const { results } = await retrieveCandidates("quelle filière de babtich el habib");
+
+    expect(results).toEqual([]);
+  });
+
+  it("garde un profil pile au niveau du plancher", async () => {
+    rpc.mockImplementation((fn: string) =>
+      Promise.resolve(
+        fn === "search_candidates" ? ok([row(1, MIN_CANDIDATE_RELEVANCE)]) : ok([]),
+      ),
+    );
+    expect((await retrieveCandidates("x")).results).toHaveLength(1);
   });
 });

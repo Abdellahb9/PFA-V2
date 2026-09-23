@@ -66,6 +66,12 @@ export interface CandidateSearchDiag {
   minYears: number | null;
 }
 
+/**
+ * Plancher de pertinence pour un candidat. Doit rester aligné sur
+ * `relevance_min` de la RPC search_candidates (migration 0017).
+ */
+export const MIN_CANDIDATE_RELEVANCE = 0.06;
+
 interface CandidateRow {
   candidate_id: number;
   name: string;
@@ -100,7 +106,7 @@ export async function retrieveCandidates(
   });
   if (error) throw new Error(error.message);
 
-  const results: CandidateSource[] = ((data ?? []) as CandidateRow[]).map((r) => ({
+  const rows: CandidateSource[] = ((data ?? []) as CandidateRow[]).map((r) => ({
     type: "candidate",
     candidate_id: r.candidate_id,
     name: r.name,
@@ -110,6 +116,11 @@ export async function retrieveCandidates(
     skills: r.skills ?? [],
     similarity: Math.round(Number(r.rank ?? 0) * 10000) / 10000,
   }));
+
+  // Plancher de pertinence, appliqué une seconde fois ici. Le SQL le pose déjà,
+  // mais l'agent affiche ce tableau comme une PREUVE : mieux vaut ne rien
+  // montrer que d'aligner trois profils sans rapport sous une barre à 71 %.
+  const results = rows.filter((r) => r.similarity >= MIN_CANDIDATE_RELEVANCE);
 
   if (results.length) {
     return { results, diag: { ...EMPTY_DIAG, scanned: results.length, termMatches: results.length, minYears } };
