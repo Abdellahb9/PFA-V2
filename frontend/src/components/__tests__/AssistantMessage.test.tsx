@@ -58,3 +58,48 @@ describe("AssistantMessage — sûreté", () => {
     expect(() => render(<AssistantMessage content="" />)).not.toThrow();
   });
 });
+
+// Les modèles gpt-oss émettent des marqueurs de citation propriétaires qui
+// s'affichaient tels quels dans la réponse : « 【1†L1-L5】 ». Le prompt système
+// les interdit maintenant, mais aucun marqueur brut ne doit pouvoir passer.
+describe("AssistantMessage — marqueurs de citation", () => {
+  it("ne laisse jamais un marqueur brut à l'écran", () => {
+    const { container } = render(
+      <AssistantMessage content="Sa filière est l'informatique【1†L1-L5】 selon le CV." />,
+    );
+    expect(container.textContent).not.toContain("【");
+    expect(container.textContent).not.toContain("†");
+    expect(container.textContent).not.toContain("L1-L5");
+  });
+
+  it("transforme le marqueur en badge portant son numéro", () => {
+    render(<AssistantMessage content="Réponse【2†source】." />);
+    expect(screen.getByTitle("Voir la source 2")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
+  it("rend le badge cliquable et remonte l'index au parent", async () => {
+    const seen: number[] = [];
+    render(<AssistantMessage content="Texte【3†L4-L9】" onCite={(n) => seen.push(n)} />);
+    screen.getByTitle("Voir la source 3").click();
+    expect(seen).toEqual([3]);
+  });
+
+  it("gère la variante ASCII et les marqueurs multiples", () => {
+    const { container } = render(
+      <AssistantMessage content={"Un【1†a】 deux [2†b] trois【3†c】"} />,
+    );
+    expect(container.textContent).not.toContain("†");
+    expect(screen.getByTitle("Voir la source 1")).toBeInTheDocument();
+    expect(screen.getByTitle("Voir la source 2")).toBeInTheDocument();
+    expect(screen.getByTitle("Voir la source 3")).toBeInTheDocument();
+  });
+
+  it("intercepte aussi un marqueur à l'intérieur d'une liste ou d'un gras", () => {
+    const { container } = render(
+      <AssistantMessage content={"- **Habib**【1†cv】 : informatique"} />,
+    );
+    expect(container.textContent).not.toContain("【");
+    expect(container.querySelector("li")).not.toBeNull();
+  });
+});

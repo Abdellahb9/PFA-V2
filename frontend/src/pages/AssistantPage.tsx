@@ -73,7 +73,14 @@ interface Turn {
 // Render the retrieved evidence appropriately for each skill.
 // L'agent peut mélanger les sources dans un même tour : on les regroupe par
 // type au lieu de se fier à une intention unique.
-function Sources({ sources }: { sources: AssistantSource[] }) {
+function Sources({
+  sources,
+  openIndex,
+}: {
+  sources: AssistantSource[];
+  /** Index 1-based de l'extrait à déplier, piloté par un badge de citation. */
+  openIndex?: number;
+}) {
   if (!sources.length) return null;
   const candidates = sources.filter((s) => (s as { type?: string }).type === "candidate");
   const chunks = sources.filter((s) => (s as { type?: string }).type === "doc_chunk");
@@ -81,7 +88,7 @@ function Sources({ sources }: { sources: AssistantSource[] }) {
   return (
     <>
       <CandidateSources rows={candidates as AssistantCandidateSource[]} />
-      <ChunkSources rows={chunks as AssistantChunkSource[]} />
+      <ChunkSources rows={chunks as AssistantChunkSource[]} openIndex={openIndex} />
     </>
   );
 }
@@ -130,14 +137,37 @@ function CandidateSources({ rows }: { rows: AssistantCandidateSource[] }) {
   );
 }
 
-function ChunkSources({ rows }: { rows: AssistantChunkSource[] }) {
+function ChunkSources({
+  rows,
+  openIndex,
+}: {
+  rows: AssistantChunkSource[];
+  openIndex?: number;
+}) {
+  const keyOf = (c: AssistantChunkSource, i: number) =>
+    `${c.source_document}-${c.chunk_index}-${i}`;
+
+  // Panneau contrôlé, mais l'utilisateur garde la main : `onChange` réécrit
+  // l'état, et un clic sur un badge de citation force l'ouverture du bon
+  // extrait. Le modèle numérote ses citations à partir de 1.
+  const [active, setActive] = useState<string[]>([]);
+  useEffect(() => {
+    if (openIndex == null) return;
+    const target = rows[openIndex - 1];
+    if (target) setActive([keyOf(target, openIndex - 1)]);
+    // keyOf est stable pour un jeu de lignes donné.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openIndex, rows]);
+
   if (!rows.length) return null;
   return (
     <Collapse
       size="small"
       style={{ marginTop: 12 }}
+      activeKey={active}
+      onChange={(k) => setActive(Array.isArray(k) ? k : [k])}
       items={rows.map((c, i) => ({
-        key: `${c.source_document}-${c.chunk_index}-${i}`,
+        key: keyOf(c, i),
         label: (
           <Space size={6} wrap>
             <FilePdfOutlined />
@@ -158,6 +188,8 @@ export default function AssistantPage() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
+  // Badge de citation cliqué : { tour concerné, index 1-based de l'extrait }.
+  const [citation, setCitation] = useState<{ turn: number; index: number } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -319,8 +351,17 @@ export default function AssistantPage() {
                         </Text>
                       )}
                     </Space>
-                    <AssistantMessage content={turn.content} streaming={turn.streaming} />
-                    {!turn.streaming && <Sources sources={turn.sources ?? []} />}
+                    <AssistantMessage
+                      content={turn.content}
+                      streaming={turn.streaming}
+                      onCite={(n) => setCitation({ turn: i, index: n })}
+                    />
+                    {!turn.streaming && (
+                      <Sources
+                        sources={turn.sources ?? []}
+                        openIndex={citation?.turn === i ? citation.index : undefined}
+                      />
+                    )}
                   </Card>
                 ),
               )}
