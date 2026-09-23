@@ -405,15 +405,19 @@ export const useIngestKnowledgeDocument = () => {
       file,
       title,
       replace,
+      docType,
     }: {
       file: File;
       title?: string;
       replace?: boolean;
+      /** policy = règlement, cv = un CV. Déduit du nom de fichier si omis. */
+      docType?: "policy" | "cv" | "other";
     }) => {
       const form = new FormData();
       form.append("file", file);
       if (title) form.append("title", title);
       if (replace) form.append("replace", "true");
+      if (docType) form.append("doc_type", docType);
       return (await api.post("/assistant/documents", form)).data;
     },
     // L'ingestion est synchrone : les extraits sont là dès la réponse.

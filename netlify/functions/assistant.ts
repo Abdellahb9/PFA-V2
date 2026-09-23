@@ -16,7 +16,7 @@ import {
   resolveConversation,
   saveMessage,
 } from "./_shared/conversations";
-import { ingestDocumentText, listDocumentCounts } from "./_shared/rag";
+import { ingestDocumentText, listDocumentCounts, type DocType } from "./_shared/rag";
 
 export const config = {
   path: [
@@ -161,6 +161,17 @@ async function handleUpload(req: Request): Promise<Response> {
   }
 
   const sourceDocument = String(form.get("title") ?? "").trim() || file.name || "document";
+  // Le panneau s'appelle « politique de stage » mais acceptait n'importe quoi :
+  // un CV s'y retrouvait indexé et remontait sur des questions de règlement.
+  // Le type est explicite, avec un repli déduit du nom de fichier.
+  const requested = String(form.get("doc_type") ?? "").trim();
+  const docType: DocType = (["policy", "cv", "other"] as const).includes(
+    requested as DocType,
+  )
+    ? (requested as DocType)
+    : /(^|[^a-z])cv([^a-z]|$)|resume|curriculum/i.test(sourceDocument + " " + file.name)
+      ? "cv"
+      : "policy";
   // Réutiliser un titre existant remplaçait silencieusement les extraits d'un
   // autre document. On l'exige explicitement plutôt que de le deviner.
   if (String(form.get("replace") ?? "") !== "true") {
@@ -183,8 +194,8 @@ async function handleUpload(req: Request): Promise<Response> {
 
   // Découpage + insertion sont rapides sans embeddings : traitement synchrone,
   // donc 200 et non 202 — il n'y a aucune tâche de fond à suivre.
-  const chunks = await ingestDocumentText(sourceDocument, text);
-  return json({ source_document: sourceDocument, status: "ingested", chunks });
+  const chunks = await ingestDocumentText(sourceDocument, text, docType);
+  return json({ source_document: sourceDocument, doc_type: docType, status: "ingested", chunks });
 }
 
 async function listDocuments(): Promise<Response> {

@@ -118,14 +118,22 @@ export const TOOLS = [
     function: {
       name: "search_documents",
       description:
-        "Recherche plein-texte dans TOUS les documents déposés dans la base documentaire : " +
-        "politique de stage, conventions et règlements, mais aussi CV et tout autre document " +
-        "téléversé. À utiliser pour les règles et procédures, ET pour retrouver une personne " +
-        "ou une information qui n'est pas dans la base des candidats.",
+        "Recherche plein-texte dans les documents déposés. CHOISIS le type selon la " +
+        "question : 'policy' pour une règle, une durée, une procédure, une convention ; " +
+        "'cv' pour retrouver une personne absente de la base des candidats ; omets le " +
+        "type seulement si tu ne sais vraiment pas. Un CV ne répond JAMAIS à une " +
+        "question sur la politique de stage, et réciproquement.",
       parameters: {
         type: "object",
         properties: {
           query: { type: "string", description: "Requête autonome, mots-clés inclus." },
+          doc_type: {
+            type: "string",
+            enum: ["policy", "cv", "other"],
+            description:
+              "policy = règlement / convention / procédure ; cv = un CV déposé ; " +
+              "other = le reste. Omettre pour chercher partout.",
+          },
           top_k: { type: "number", description: "Nombre d'extraits (défaut 5)." },
         },
         required: ["query"],
@@ -284,7 +292,15 @@ export async function runTool(
       };
     }
     case "search_documents": {
-      const chunks = await retrieveDocChunks(String(args.query ?? ""), clampInt(args.top_k, 1, 20, 5));
+      const allowed = ["policy", "cv", "other"] as const;
+      const docType = allowed.includes(args.doc_type as (typeof allowed)[number])
+        ? (args.doc_type as (typeof allowed)[number])
+        : null;
+      const chunks = await retrieveDocChunks(
+        String(args.query ?? ""),
+        clampInt(args.top_k, 1, 20, 5),
+        docType,
+      );
       if (chunks.length) {
         // Le texte vient d'un document déposé par un tiers : on l'étiquette pour
         // que le modèle le traite en donnée citable, pas en consigne reçue.

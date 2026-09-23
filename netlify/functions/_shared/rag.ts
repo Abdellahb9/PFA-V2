@@ -283,12 +283,16 @@ export async function getScoreBreakdown(assignmentId: number): Promise<Explanati
 
 // ---- Skill 3: policy-document Q&A (full-text search) -------------------------
 
+/** Nature d'un document : la doctrine, un CV, ou le reste. */
+export type DocType = "policy" | "cv" | "other";
+
 export interface ChunkSource {
   type: "doc_chunk";
   source_document: string;
   chunk_index: number;
   text: string;
   similarity: number;
+  doc_type: DocType;
 }
 
 /**
@@ -298,15 +302,24 @@ export interface ChunkSource {
  */
 export const MIN_RELEVANCE = 0.02;
 
-export async function retrieveDocChunks(query: string, topK = 5): Promise<ChunkSource[]> {
+export async function retrieveDocChunks(
+  query: string,
+  topK = 5,
+  docType: DocType | null = null,
+): Promise<ChunkSource[]> {
   const sb = admin();
-  const { data, error } = await sb.rpc("search_document_chunks", { q: query, top_k: topK });
+  const { data, error } = await sb.rpc("search_document_chunks", {
+    q: query,
+    top_k: topK,
+    p_doc_type: docType,
+  });
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as {
     source_document: string;
     chunk_index: number;
     chunk_text: string;
     rank: number | string;
+    doc_type: DocType;
   }[];
 
   const chunks = rows.map((r) => ({
@@ -314,6 +327,7 @@ export async function retrieveDocChunks(query: string, topK = 5): Promise<ChunkS
     source_document: r.source_document,
     chunk_index: r.chunk_index,
     text: r.chunk_text,
+    doc_type: r.doc_type ?? "other",
     // Le rang est déjà borné dans [0, 1[ par ts_rank_cd : on le publie tel quel.
     // Le normaliser sur le meilleur résultat plaçait TOUJOURS le premier extrait
     // à 100 %, y compris quand il était hors sujet.
@@ -341,13 +355,16 @@ function dedupeAdjacent(chunks: ChunkSource[]): ChunkSource[] {
 
 /** Documents ingérés et leur nombre d'extraits, comptés en SQL. */
 export async function listDocumentCounts(): Promise<
-  { source_document: string; chunks: number }[]
+  { source_document: string; chunks: number; doc_type: DocType }[]
 > {
   const { data, error } = await admin().rpc("list_document_chunk_counts");
   if (error) throw new Error(error.message);
-  return ((data ?? []) as { source_document: string; chunks: number | string }[]).map((r) => ({
+  return (
+    (data ?? []) as { source_document: string; chunks: number | string; doc_type: DocType }[]
+  ).map((r) => ({
     source_document: r.source_document,
     chunks: Number(r.chunks),
+    doc_type: r.doc_type ?? "other",
   }));
 }
 
@@ -393,11 +410,16 @@ export function chunkText(text: string): string[] {
  * deux requêtes, une insertion en échec laissait le document supprimé et
  * définitivement perdu, l'appelant ne recevant qu'une erreur 500.
  */
-export async function ingestDocumentText(sourceDocument: string, text: string): Promise<number> {
+export async function ingestDocumentText(
+  sourceDocument: string,
+  text: string,
+  docType: DocType = "policy",
+): Promise<number> {
   const chunks = chunkText(text);
   const { data, error } = await admin().rpc("replace_document_chunks", {
     p_source_document: sourceDocument,
     p_chunks: chunks,
+    p_doc_type: docType,
   });
   if (error) throw new Error(error.message);
   return Number(data ?? 0);

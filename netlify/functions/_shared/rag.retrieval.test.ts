@@ -112,6 +112,7 @@ describe("retrieveDocChunks", () => {
     chunk_index: index,
     chunk_text: `Extrait ${index}`,
     rank,
+    doc_type: "policy" as const,
   });
 
   it("écarte les extraits sous le seuil de pertinence", async () => {

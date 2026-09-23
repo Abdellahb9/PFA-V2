@@ -330,9 +330,13 @@ export type AssistantSource =
   | AssistantChunkSource
   | AssistantExplanationSource;
 
+/** Nature d'un document de la base : doctrine, CV déposé, ou autre. */
+export type DocType = "policy" | "cv" | "other";
+
 export interface KnowledgeDocument {
   source_document: string;
   chunks: number;
+  doc_type: DocType;
 }
 
 // ---- Échange d'offre ----

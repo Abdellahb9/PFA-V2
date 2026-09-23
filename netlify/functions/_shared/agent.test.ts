@@ -37,6 +37,7 @@ const chunk = (i: number) => ({
   chunk_index: i,
   text: `Article ${i}. ` + "La duree du stage est fixee par la convention tripartite. ".repeat(28),
   similarity: 1 - i * 0.1,
+  doc_type: "policy" as const,
 });
 
 const candidate = (i: number) => ({

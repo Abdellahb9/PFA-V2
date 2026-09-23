@@ -55,6 +55,13 @@ const { Text, Paragraph } = Typography;
 // Exemples choisis pour aboutir avec les données réelles : ils couvrent la
 // recherche de profils, le croisement offre/candidats et le suivi d'une
 // candidature — sans dépendre d'un identifiant codé en dur.
+/** La base mélangeait doctrine et CV : on montre désormais ce qu'on indexe. */
+const DOC_TYPE_LABEL: Record<string, string> = {
+  policy: "politique",
+  cv: "CV",
+  other: "autre",
+};
+
 const EXAMPLES = [
   "Trouve-moi des candidats qui savent faire du Python",
   "Quelles offres de stage sont ouvertes ?",
@@ -486,7 +493,16 @@ export default function AssistantPage() {
                   >
                     <List.Item.Meta
                       avatar={<FilePdfOutlined />}
-                      title={d.source_document}
+                      title={
+                        <Space size={6} wrap>
+                          {d.source_document}
+                          {/* La doctrine et les CV cohabitaient sans distinction :
+                              on montre ce qui est réellement indexé. */}
+                          <Tag color={d.doc_type === "cv" ? "gold" : "blue"}>
+                            {DOC_TYPE_LABEL[d.doc_type] ?? d.doc_type}
+                          </Tag>
+                        </Space>
+                      }
                       description={`${d.chunks} extrait${d.chunks > 1 ? "s" : ""} indexé${
                         d.chunks > 1 ? "s" : ""
                       }`}
