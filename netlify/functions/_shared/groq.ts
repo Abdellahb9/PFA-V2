@@ -23,7 +23,12 @@ const PROMPT = (cv: string) => `Extract these fields from the CV below as JSON:
 - first_name, last_name, email, phone (strings or null)
 - education_level: one of "Bac+2","Bac+3","Bac+4","Bac+5","Doctorat" or null
 - field_of_study, university (strings or null)
-- years_experience (number)
+- years_experience (number): PROFESSIONAL WORK EXPERIENCE ONLY.
+  NEVER use the person's age. A CV starting with "Firstname Lastname 22 ans"
+  states an AGE, not 22 years of experience. Do not count years of study, and
+  do not derive it from graduation dates. If no professional experience is
+  explicitly stated, return 0. These are students applying for internships:
+  a value above 15 is almost always a mistake.
 - skills: array of short skill keywords, lowercase, in ENGLISH and canonical
   (e.g. "machine learning" not "ML", "javascript" not "JS").
 

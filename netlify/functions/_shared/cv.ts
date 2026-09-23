@@ -38,6 +38,35 @@ export async function extractCvText(data: Uint8Array, filename: string): Promise
   return new TextDecoder().decode(data);
 }
 
+/**
+ * Un stagiaire est un étudiant : au-delà, la valeur est presque toujours un âge
+ * ou une année lue de travers.
+ */
+export const MAX_PLAUSIBLE_INTERN_YEARS = 15;
+
+/**
+ * Arbitre entre l'expérience annoncée par le LLM et celle trouvée par regex.
+ *
+ * Le modèle confond régulièrement l'âge et l'expérience : un CV qui s'ouvre sur
+ * « MERIEM BEDDA 22 ans » lui fait renvoyer 22. La regex, elle, EXIGE un mot de
+ * contexte (« expérience ») autour du nombre — quand elle ne trouve rien alors
+ * que le modèle annonce une carrière entière, c'est le modèle qui se trompe.
+ */
+export function reconcileExperience(
+  llmYears: number | null | undefined,
+  hintYears: number,
+): number {
+  // `Number(null)` vaut 0, pas NaN : sans ce test, une valeur ABSENTE passait
+  // pour un zéro légitime et écrasait la regex.
+  if (llmYears == null) return hintYears;
+  const llm = Number(llmYears);
+  if (!Number.isFinite(llm) || llm < 0) return hintYears;
+  if (llm <= MAX_PLAUSIBLE_INTERN_YEARS) return llm;
+  // Valeur invraisemblable pour un stage : on retombe sur la regex contextuelle,
+  // qui vaut 0 quand aucune expérience n'est réellement mentionnée.
+  return hintYears;
+}
+
 /** Lightweight regex fallbacks (used to fill gaps the LLM missed). */
 export function regexHints(text: string): {
   email: string | null;

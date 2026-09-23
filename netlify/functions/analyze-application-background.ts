@@ -2,7 +2,7 @@
 // structured extraction -> persist skills/education -> compute best-fit score.
 // Invoked fire-and-forget by submit-application (and by /api/reanalyze).
 import { admin, BUCKET } from "./_shared/supabase";
-import { extractCvText, regexHints } from "./_shared/cv";
+import { extractCvText, reconcileExperience, regexHints } from "./_shared/cv";
 import { extractProfileCached } from "./_shared/cv-cache";
 import { extractSkills } from "./_shared/skills";
 import { getOrCreateSkill, loadOfferProfiles } from "./_shared/db";
@@ -128,7 +128,9 @@ export default async (req: Request): Promise<Response> => {
         education_level: llm?.education_level ?? undefined,
         field_of_study: llm?.field_of_study ?? undefined,
         university: llm?.university ?? hints.university ?? undefined,
-        years_experience: llm?.years_experience ?? hints.yearsExperience ?? 0,
+        // Le modèle prend régulièrement l'âge pour de l'expérience : on arbitre
+        // au lieu de lui faire confiance aveuglément.
+        years_experience: reconcileExperience(llm?.years_experience, hints.yearsExperience),
         phone: llm?.phone ?? hints.phone ?? undefined,
       })
       .eq("id", candidateId);

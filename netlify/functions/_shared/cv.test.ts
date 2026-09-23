@@ -5,7 +5,7 @@
 // de 22 années d'expérience. Le chiffre remontait ensuite jusqu'à l'assistant,
 // qui le présentait comme un fait.
 import { describe, expect, it } from "vitest";
-import { regexHints } from "./cv";
+import { reconcileExperience, regexHints } from "./cv";
 
 describe("regexHints — années d'expérience", () => {
   it("ne prend pas un âge pour de l'expérience", () => {
@@ -54,5 +54,38 @@ describe("regexHints — autres repères", () => {
     const h = regexHints("Texte sans coordonnées ni école.");
     expect(h.email).toBeNull();
     expect(h.university).toBeNull();
+  });
+});
+
+// Le correctif précédent (abcf98a) n'avait durci que la REGEX. Or le pipeline
+// fait « llm?.years_experience ?? hints.yearsExperience » : la valeur du modèle
+// gagne, donc le durcissement ne s'appliquait jamais quand le LLM répondait.
+// D'où « m bed : 22 ans d'expérience » toujours en base.
+describe("reconcileExperience — arbitrage LLM / regex", () => {
+  it("garde une valeur plausible venue du LLM", () => {
+    expect(reconcileExperience(3, 0)).toBe(3);
+    expect(reconcileExperience(0, 0)).toBe(0);
+    expect(reconcileExperience(15, 0)).toBe(15);
+  });
+
+  it("rejette un âge pris pour de l'expérience", () => {
+    // Cas réel : CV « MERIEM BEDDA 22 ans », regex contextuelle -> 0.
+    expect(reconcileExperience(22, 0)).toBe(0);
+    expect(reconcileExperience(45, 0)).toBe(0);
+  });
+
+  it("préfère la regex contextuelle quand le LLM délire", () => {
+    // Le CV dit « 4 ans d'expérience » mais le modèle renvoie l'âge.
+    expect(reconcileExperience(30, 4)).toBe(4);
+  });
+
+  it("retombe sur la regex si le LLM n'a rien renvoyé", () => {
+    expect(reconcileExperience(null, 5)).toBe(5);
+    expect(reconcileExperience(undefined, 0)).toBe(0);
+    expect(reconcileExperience(Number.NaN, 2)).toBe(2);
+  });
+
+  it("ignore une valeur négative", () => {
+    expect(reconcileExperience(-3, 1)).toBe(1);
   });
 });
