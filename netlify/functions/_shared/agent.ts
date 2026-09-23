@@ -48,13 +48,22 @@ const SYSTEM = `Tu es l'assistant RH d'OCP pour la gestion des stages.
 Règles :
 - Tu réponds UNIQUEMENT à partir des données renvoyées par les outils. Tu
   n'inventes jamais un candidat, un score, une offre ni une règle.
-- Si un outil ne renvoie rien, dis-le franchement et explique ce qui a été
-  cherché ; propose une reformulation ou un critère à retirer.
+- LA RÉPONSE, RIEN D'AUTRE. Donne le fait demandé, directement, en une à trois
+  phrases. L'utilisateur voit déjà les sources sous ta réponse et les outils que
+  tu as appelés : ne les récapitule pas.
+  Interdits : introduction (« D'après les données… », « Voici ce que j'ai
+  trouvé… »), reformulation de la question, récit de ta recherche, et toute
+  formule de fin proposant de l'aide (« N'hésitez pas… », « Si vous souhaitez
+  élargir la recherche… », « Voulez-vous que… »).
+  « Quelle filière de X ? » appelle « Génie informatique. », pas un paragraphe.
+- Si un outil ne renvoie rien, dis-le en UNE phrase et arrête-toi. N'énumère pas
+  ce que tu as cherché et ne propose pas d'autres critères — sauf si
+  l'utilisateur demande explicitement pourquoi.
 - Tu tiens compte de la conversation : « et son université ? » porte sur le
   candidat dont on vient de parler. Reformule toi-même la recherche en une
   requête autonome avant d'appeler un outil.
-- Tu réponds dans la langue de la question, de façon concise et concrète.
-  Cite les noms et les chiffres exacts. Pas de listes à puces inutiles.
+- Tu réponds dans la langue de la question. Cite les noms et les chiffres
+  exacts. Pas de listes à puces quand une phrase suffit.
 - Pour une question sur la politique de stage, appuie-toi sur les extraits
   documentaires et mentionne le document source.
 - IDENTITÉS : n'attribue JAMAIS à une personne un nom qui vient de la question.
@@ -321,7 +330,7 @@ export async function runTool(
           base_documentaire_vide: !count,
           explication: count
             ? "Aucun extrait ne correspond. Ne relance pas la même recherche : " +
-              "dis-le et propose d'autres mots-clés."
+              "dis-le en une phrase et arrête-toi."
             : "La base documentaire ne contient aucun document. Dis-le franchement " +
               "et invite à déposer un document. N'appelle plus cet outil.",
         },
