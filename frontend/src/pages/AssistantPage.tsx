@@ -37,6 +37,7 @@ import {
   useKnowledgeDocuments,
 } from "@/api/hooks";
 import { apiErrorMessage } from "@/api/client";
+import AssistantMessage from "@/components/AssistantMessage";
 import { streamChat, TOOL_LABELS } from "@/api/chat";
 import type { AgentEvent, StoredConversation } from "@/api/chat";
 import { api } from "@/api/client";
@@ -318,12 +319,7 @@ export default function AssistantPage() {
                         </Text>
                       )}
                     </Space>
-                    <Paragraph style={{ whiteSpace: "pre-wrap", marginBottom: 0 }}>
-                      {turn.content}
-                      {turn.streaming && turn.content && (
-                        <span style={{ opacity: 0.5 }}>▍</span>
-                      )}
-                    </Paragraph>
+                    <AssistantMessage content={turn.content} streaming={turn.streaming} />
                     {!turn.streaming && <Sources sources={turn.sources ?? []} />}
                   </Card>
                 ),
