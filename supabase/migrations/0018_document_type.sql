@@ -39,6 +39,21 @@ update public.document_chunks
    and (source_document ~* '(^|[^a-z])cv([^a-z]|$)'
         or source_document ~* 'resume|curriculum');
 
+-- ---- Anciennes signatures retirées AVANT toute recréation --------------------
+--
+-- `create or replace` ne peut PAS changer le type de retour d'une fonction :
+-- PostgreSQL répond « 42P13 cannot change return type of existing function ».
+-- list_document_chunk_counts() garde sa signature (aucun argument) mais gagne
+-- une colonne doc_type : il faut donc la supprimer d'abord.
+--
+-- Les deux autres changent de SIGNATURE (un argument de plus), donc un simple
+-- `create or replace` créerait une SURCHARGE au lieu de remplacer. On retire
+-- l'ancienne version : deux variantes coexistantes rendraient l'appel à deux
+-- arguments ambigu, et laisseraient un appelant écrire des extraits sans type.
+drop function if exists public.replace_document_chunks(text, jsonb);
+drop function if exists public.search_document_chunks(text, int);
+drop function if exists public.list_document_chunk_counts();
+
 -- ---- Recherche filtrée -------------------------------------------------------
 -- `p_doc_type` à NULL = tous les types (comportement historique).
 create or replace function public.search_document_chunks(
@@ -117,11 +132,6 @@ begin
   return inserted;
 end;
 $$;
-
--- L'ancienne signature à 2 arguments disparaît : la garder laisserait un
--- appelant écrire des extraits sans type et rouvrir exactement ce mélange.
-drop function if exists public.replace_document_chunks(text, jsonb);
-drop function if exists public.search_document_chunks(text, int);
 
 revoke all on function public.search_document_chunks(text, int, text)
   from public, anon, authenticated;
