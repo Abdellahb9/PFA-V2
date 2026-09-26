@@ -76,3 +76,83 @@ export function extractSkills(text: string): string[] {
   }
   return [...found];
 }
+
+// ---- Filières ---------------------------------------------------------------
+//
+// Les offres portent une filière libre (« Informatique », « Génie électrique »)
+// et les candidats une autre (« Génie informatique et réseaux »,
+// « Électromécanique »). Aucune entrée du gazetteer ne couvrait « informatique »,
+// la filière la plus fréquente : les deux vocabulaires ne se rejoignaient jamais.
+// Cette table les ramène à une filière canonique commune.
+
+/** Filière canonique -> formes rencontrées (FR/EN), comparées après normalize(). */
+const FIELD_ALIASES: Record<string, string[]> = {
+  informatique: [
+    "informatique", "genie informatique", "computer science", "computer engineering",
+    "it", "developpement", "developpement logiciel", "genie logiciel", "software engineering",
+    "systemes d'information", "systemes d information", "reseaux", "reseaux informatiques",
+    "telecommunications", "telecom",
+  ],
+  "data science": [
+    "data science", "science des donnees", "data", "big data", "intelligence artificielle",
+    "ia", "ai", "machine learning", "apprentissage automatique", "data analysis",
+    "analyse de donnees", "statistique", "statistiques",
+  ],
+  "genie electrique": [
+    "genie electrique", "electrical engineering", "electrotechnique", "electricite",
+    "electronique", "automatisme", "automatique", "electromecanique", "genie electromecanique",
+  ],
+  "genie des procedes": [
+    "genie des procedes", "process engineering", "genie chimique", "chemical engineering",
+    "chimie", "chimie industrielle", "chemistry",
+  ],
+  "genie mecanique": ["genie mecanique", "mechanical engineering", "mecanique"],
+  "genie industriel": ["genie industriel", "industrial engineering", "productique"],
+  "genie civil": ["genie civil", "civil engineering", "btp"],
+  qualite: ["qualite", "quality", "qhse", "hse", "iso 9001", "hygiene securite environnement"],
+  maintenance: ["maintenance", "maintenance industrielle", "gmao"],
+  logistique: ["logistique", "supply chain", "logistics", "achats"],
+  finance: ["finance", "comptabilite", "accounting", "audit", "controle de gestion"],
+  rh: ["ressources humaines", "gestion des ressources humaines", "human resources", "rh", "hr"],
+};
+
+/** Libellé affichable d'une filière canonique. */
+export const FIELD_LABELS: Record<string, string> = {
+  informatique: "Informatique",
+  "data science": "Data Science",
+  "genie electrique": "Génie électrique",
+  "genie des procedes": "Génie des procédés",
+  "genie mecanique": "Génie mécanique",
+  "genie industriel": "Génie industriel",
+  "genie civil": "Génie civil",
+  qualite: "Qualité",
+  maintenance: "Maintenance",
+  logistique: "Logistique",
+  finance: "Finance",
+  rh: "Ressources humaines",
+};
+
+export const KNOWN_FIELDS = Object.keys(FIELD_ALIASES);
+
+// Toutes les formes, de la plus longue à la plus courte : « science des donnees »
+// doit l'emporter sur « data » quand les deux figurent dans le texte.
+const FIELD_FORMS: { form: string; field: string }[] = Object.entries(FIELD_ALIASES)
+  .flatMap(([field, forms]) => forms.map((f) => ({ form: normalize(f), field })))
+  .sort((a, b) => b.form.length - a.form.length);
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Filière canonique d'un texte libre, ou null.
+ * Correspondance sur MOT ENTIER : « mecanique » ne doit pas sortir de
+ * « electromecanique », ni « ia » de « specialisation ».
+ */
+export function resolveField(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const n = normalize(text.replace(/[’`]/g, "'"));
+  if (!n) return null;
+  for (const { form, field } of FIELD_FORMS) {
+    if (new RegExp(`(^|[^a-z0-9])${escapeRe(form)}([^a-z0-9]|$)`).test(n)) return field;
+  }
+  return null;
+}

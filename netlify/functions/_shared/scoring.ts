@@ -32,7 +32,8 @@ export interface ScoreBreakdown {
   weights: { skills: number; education: number };
 }
 
-function levelRank(level: string | null): number | null {
+/** Rang ordinal d'un niveau d'études (Bac+5 > Bac+3…), ou null s'il est inconnu. */
+export function levelRank(level: string | null): number | null {
   if (!level) return null;
   return EDUCATION_RANK[level.trim().toLowerCase()] ?? null;
 }

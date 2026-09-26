@@ -2,6 +2,7 @@
 import { admin } from "./supabase";
 import { canonicalize, categoryOf, normalize } from "./skills";
 import type { CandidateProfile, OfferProfile } from "./scoring";
+import type { ApplicantRecord, OfferRecord } from "./ranking";
 import type { OfferCapacity } from "./offer-switch";
 
 /**
@@ -112,4 +113,99 @@ export async function loadOfferProfiles(): Promise<OfferProfile[]> {
     });
   }
   return profiles;
+}
+
+// ---- Vivier complet pour le classement ---------------------------------------
+//
+// Classer « les meilleurs » exige de voir TOUS les candidats. Or PostgREST plafonne
+// une réponse à 1 000 lignes par défaut, sans erreur : au-delà, le reste du vivier
+// disparaît en silence. On pagine donc explicitement.
+
+const PAGE_SIZE = 1000;
+
+/**
+ * Enchaîne les pages jusqu'à la dernière (incomplète).
+ * `fetchPage(from, to)` reçoit des bornes INCLUSIVES, comme `.range()`.
+ */
+export async function fetchAllPages<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  pageSize = PAGE_SIZE,
+): Promise<T[]> {
+  const all: T[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await fetchPage(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    const rows = data ?? [];
+    all.push(...rows);
+    if (rows.length < pageSize) return all;
+  }
+}
+
+/** Statuts d'une candidature ANALYSÉE et encore en lice. */
+const RANKABLE_STATUSES = ["parsed", "under_review", "assigned"];
+
+export async function loadApplicantPool(): Promise<ApplicantRecord[]> {
+  const sb = admin();
+  const rows = await fetchAllPages<any>((from, to) =>
+    sb
+      .from("applications")
+      .select(
+        "id, status, candidate:candidates(id, first_name, last_name, education_level, " +
+          "field_of_study, years_experience, candidate_skills(weight, skill:skills(normalized)))",
+      )
+      .in("status", RANKABLE_STATUSES)
+      .order("id")
+      .range(from, to),
+  );
+
+  const pool: ApplicantRecord[] = [];
+  for (const app of rows) {
+    const c = Array.isArray(app.candidate) ? app.candidate[0] : app.candidate;
+    if (!c) continue;
+    const skills = new Map<string, number>();
+    for (const cs of (c.candidate_skills ?? []) as SkillRow[]) {
+      if (cs.skill?.normalized) skills.set(cs.skill.normalized, cs.weight);
+    }
+    pool.push({
+      candidateId: c.id,
+      applicationId: app.id,
+      name: `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim(),
+      status: app.status,
+      educationLevel: c.education_level ?? null,
+      fieldOfStudy: c.field_of_study ?? null,
+      yearsExperience: Number(c.years_experience ?? 0),
+      skills,
+    });
+  }
+  return pool;
+}
+
+interface OfferSkillRow extends SkillRow {
+  required: boolean | null;
+}
+
+export async function loadOpenOffersWithSkills(): Promise<OfferRecord[]> {
+  const sb = admin();
+  const rows = await fetchAllPages<any>((from, to) =>
+    sb
+      .from("internship_offers")
+      .select("id, title, field, min_education_level, offer_skills(weight, required, skill:skills(normalized))")
+      .eq("status", "open")
+      .order("id")
+      .range(from, to),
+  );
+
+  return rows.map((o) => ({
+    offerId: o.id,
+    title: o.title,
+    field: o.field ?? null,
+    minEducationLevel: o.min_education_level ?? null,
+    skills: ((o.offer_skills ?? []) as OfferSkillRow[])
+      .filter((s) => s.skill?.normalized)
+      .map((s) => ({
+        skill: s.skill!.normalized,
+        weight: Number(s.weight ?? 1),
+        required: Boolean(s.required),
+      })),
+  }));
 }
