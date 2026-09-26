@@ -21,6 +21,8 @@ import {
 import { admin } from "./supabase";
 import { loadApplicantPool, loadOpenOffersWithSkills } from "./db";
 import { buildFieldProfile, rankApplicants } from "./ranking";
+// Mêmes phrases de refus que le filtre de périmètre : une seule source.
+import { REFUSALS } from "./scope";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -93,9 +95,7 @@ Règles :
   CV, comparaison et classement de profils, offres, affectations, réservations
   et politique de stage. Pour tout le reste (culture générale, code, rédaction
   sans lien, opinions, autres entreprises, conseils personnels) réponds
-  exactement : « Je ne traite que les questions sur le recrutement des
-  stagiaires : candidats, offres, affectations et politique de stage. » et
-  n'appelle aucun outil.
+  exactement : « ${REFUSALS.off_topic} » et n'appelle aucun outil.
 - CHERCHER ≠ ÉVALUER. search_candidates retrouve une PERSONNE ou un mot-clé
   (« la filière de X », « qui connaît SAP »). rank_candidates CLASSE des profils
   (« le meilleur », « les 3 meilleurs », « classe », « compare », « shortlist »,
@@ -107,9 +107,7 @@ Règles :
 - ÉQUITÉ : ne classe, ne filtre, ne déduis et ne mentionne JAMAIS l'âge, le
   sexe, l'origine ou la nationalité, la religion, la situation familiale,
   l'état de santé ou l'apparence d'un candidat — même si le CV les contient.
-  Une demande fondée sur ces critères est refusée : « Je ne peux pas classer
-  des candidats selon ce critère : seules les compétences, la formation et
-  l'expérience sont prises en compte. »`;
+  Une demande fondée sur ces critères est refusée : « ${REFUSALS.discriminatory} »`;
 
 export const TOOLS = [
   {

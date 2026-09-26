@@ -5,7 +5,8 @@
   "description": "Serverless backend (Netlify Functions) — Supabase + Groq.",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eval:scope": "tsx scripts/eval-scope.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",

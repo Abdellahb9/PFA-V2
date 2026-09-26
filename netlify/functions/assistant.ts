@@ -9,6 +9,7 @@ import { requireStaff, requireUser } from "./_shared/auth";
 import { json, fail, noContent, methodNotAllowed, readBody } from "./_shared/http";
 import { extractCvText } from "./_shared/cv";
 import { runAgent, sanitizeHistory } from "./_shared/agent";
+import { classifyScope, refusalStream } from "./_shared/scope";
 import {
   getConversation,
   getHistory,
@@ -81,6 +82,16 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
   ]);
   await saveMessage(conversationId, { role: "user", content: message });
 
+  // Filtre de périmètre AVANT l'agent : une question hors recrutement, ou une
+  // demande de classement discriminatoire, n'atteint jamais le modèle principal
+  // ni ses outils. La dernière réponse de l'assistant sert de contexte pour
+  // juger une relance courte (« et en génie électrique ? »).
+  const lastAssistant = [...history].reverse().find((m) => m.role === "assistant")?.content;
+  const scope = await classifyScope(message, lastAssistant);
+  if (scope.verdict !== "in") {
+    console.info(`assistant: question refusée (${scope.verdict}, via ${scope.via})`);
+  }
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -100,7 +111,9 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
       const tools: string[] = [];
       let sources: unknown[] = [];
       try {
-        for await (const event of runAgent(history, req.signal)) {
+        const events =
+          scope.verdict === "in" ? runAgent(history, req.signal) : refusalStream(scope.verdict);
+        for await (const event of events) {
           if (event.type === "delta") answer += event.text;
           else if (event.type === "tool") tools.push(event.name);
           else if (event.type === "sources") sources = event.sources;
