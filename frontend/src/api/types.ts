@@ -325,8 +325,32 @@ export interface AssistantExplanationSource {
   };
 }
 
+/**
+ * Une ligne de CLASSEMENT (outil rank_candidates). Contrairement à
+ * AssistantCandidateSource, dont la « similarité » mesure une ressemblance de
+ * mots, `score` est le score d'adéquation du moteur d'affectation.
+ */
+export interface AssistantRankedSource {
+  type: "ranked_candidate";
+  rank: number;
+  candidate_id: number;
+  name: string;
+  status: string;
+  score: number;
+  skills_coverage: number;
+  education_fit: number;
+  /** Critères couverts, y compris « filière X ». */
+  matched: string[];
+  /** Critères requis absents. */
+  missing: string[];
+  field_of_study: string | null;
+  education_level: string | null;
+  years_experience: number;
+}
+
 export type AssistantSource =
   | AssistantCandidateSource
+  | AssistantRankedSource
   | AssistantChunkSource
   | AssistantExplanationSource;
 

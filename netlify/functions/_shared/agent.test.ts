@@ -7,12 +7,23 @@
 // traduire par un résultat vide silencieux.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { retrieveCandidates, retrieveDocChunks, getScoreBreakdown, count } = vi.hoisted(() => ({
+const {
+  retrieveCandidates,
+  retrieveDocChunks,
+  getScoreBreakdown,
+  count,
+  loadApplicantPool,
+  loadOpenOffersWithSkills,
+} = vi.hoisted(() => ({
   retrieveCandidates: vi.fn(),
   retrieveDocChunks: vi.fn(),
   getScoreBreakdown: vi.fn(),
   count: { value: 0 },
+  loadApplicantPool: vi.fn(),
+  loadOpenOffersWithSkills: vi.fn(),
 }));
+
+vi.mock("./db", () => ({ loadApplicantPool, loadOpenOffersWithSkills }));
 
 vi.mock("./rag", () => ({
   retrieveCandidates,
@@ -185,5 +196,89 @@ describe("sanitizeHistory", () => {
     const out = sanitizeHistory(long);
     expect(out).toHaveLength(12);
     expect(out.every((m) => m.content.length <= 4000)).toBe(true);
+  });
+});
+
+// --- Classement : le code classe, le modèle explique -------------------------
+
+describe("runTool — rank_candidates", () => {
+  const offers = [
+    {
+      offerId: 2,
+      title: "Stage Data Science",
+      field: "Data Science",
+      minEducationLevel: "Bac+4",
+      skills: [
+        { skill: "python", weight: 1, required: true },
+        { skill: "data science", weight: 0.9, required: true },
+      ],
+    },
+  ];
+  const person = (id: number, name: string, skills: string[], field = "Data Science") => ({
+    candidateId: id,
+    applicationId: id * 10,
+    name,
+    status: "parsed",
+    educationLevel: "Bac+5",
+    fieldOfStudy: field,
+    yearsExperience: 1,
+    skills: new Map(skills.map((x) => [x, 0.9])),
+  });
+
+  beforeEach(() => {
+    loadOpenOffersWithSkills.mockResolvedValue(offers);
+    loadApplicantPool.mockResolvedValue([
+      person(1, "Partiel", ["python"]),
+      person(2, "Complet", ["python", "data science"]),
+    ]);
+  });
+
+  it("renvoie un classement déterministe et des sources typées", async () => {
+    const { payload, sources } = await runTool("rank_candidates", { field: "data science" });
+    const p = payload as { results: { name: string; rank: number }[]; evaluated: number };
+    expect(p.results.map((r) => r.name)).toEqual(["Complet", "Partiel"]);
+    expect(p.evaluated).toBe(2);
+    expect(sources).toHaveLength(2);
+    expect((sources[0] as { type: string }).type).toBe("ranked_candidate");
+  });
+
+  it("refuse une filière inconnue et rend la liste des filières connues", async () => {
+    const { payload, sources } = await runTool("rank_candidates", { field: "poterie" });
+    expect(payload).toHaveProperty("erreur");
+    expect((payload as { disponibles: string[] }).disponibles).toContain("Data Science");
+    expect(sources).toEqual([]);
+  });
+
+  it("accepte des compétences passées en chaîne séparée par des virgules", async () => {
+    const { payload } = await runTool("rank_candidates", { skills: "python, data science" });
+    expect((payload as { results: unknown[] }).results).toHaveLength(2);
+  });
+
+  it("borne top_k à 10", async () => {
+    loadApplicantPool.mockResolvedValue(
+      Array.from({ length: 25 }, (_, i) => person(i + 1, `C${i}`, ["python"])),
+    );
+    const { payload } = await runTool("rank_candidates", { field: "data science", top_k: 50 });
+    expect((payload as { results: unknown[] }).results).toHaveLength(10);
+  });
+
+  it("explique un classement vide au lieu de rendre du bruit", async () => {
+    loadApplicantPool.mockResolvedValue([person(1, "Hors sujet", ["hr"], "RH")]);
+    const { payload, sources } = await runTool("rank_candidates", { field: "data science" });
+    expect((payload as { results: unknown[] }).results).toEqual([]);
+    expect(payload).toHaveProperty("explication");
+    expect(sources).toEqual([]);
+  });
+
+  it("rogne la liste des résultats, pas celle des offres, si le budget déborde", () => {
+    const big = {
+      profile: "Data Science",
+      based_on_offers: ["Stage Data Science"],
+      evaluated: 99,
+      results: Array.from({ length: 60 }, (_, i) => ({ rank: i + 1, name: "x".repeat(300) })),
+    };
+    const parsed = JSON.parse(toolResultContent(big)) as typeof big;
+    expect(parsed.based_on_offers).toEqual(["Stage Data Science"]);
+    expect(parsed.results.length).toBeLessThan(60);
   });
 });

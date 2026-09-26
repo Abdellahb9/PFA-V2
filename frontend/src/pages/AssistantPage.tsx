@@ -45,16 +45,13 @@ import { api } from "@/api/client";
 import type {
   AssistantCandidateSource,
   AssistantChunkSource,
+  AssistantRankedSource,
   AssistantSource,
 } from "@/api/types";
 
 const { Text, Paragraph } = Typography;
 
 
-// The assistant answers in the language of the question (FR / EN).
-// Exemples choisis pour aboutir avec les données réelles : ils couvrent la
-// recherche de profils, le croisement offre/candidats et le suivi d'une
-// candidature — sans dépendre d'un identifiant codé en dur.
 /** La base mélangeait doctrine et CV : on montre désormais ce qu'on indexe. */
 const DOC_TYPE_LABEL: Record<string, string> = {
   policy: "politique",
@@ -62,11 +59,14 @@ const DOC_TYPE_LABEL: Record<string, string> = {
   other: "autre",
 };
 
+// Exemples qui aboutissent avec les données réelles, sans identifiant codé en
+// dur. L'évaluation d'abord : c'est l'usage principal de l'assistant. Il
+// répond dans la langue de la question (FR / EN).
 const EXAMPLES = [
-  "Trouve-moi des candidats qui savent faire du Python",
+  "Qui sont les 3 meilleurs candidats en Data Science ?",
+  "Compare les candidats pour le stage Automatisme & GMAO",
+  "Qui recommandes-tu en génie électrique ?",
   "Quelles offres de stage sont ouvertes ?",
-  "Quels candidats ont un niveau Bac+5 ?",
-  "Quel profil correspond le mieux à l'offre Data Science ?",
 ];
 
 /** Un tour affiché : le texte diffusé + les outils utilisés + les preuves. */
@@ -90,14 +90,91 @@ function Sources({
   openIndex?: number;
 }) {
   if (!sources.length) return null;
+  const ranked = sources.filter((s) => (s as { type?: string }).type === "ranked_candidate");
   const candidates = sources.filter((s) => (s as { type?: string }).type === "candidate");
   const chunks = sources.filter((s) => (s as { type?: string }).type === "doc_chunk");
 
   return (
     <>
+      <RankedSources rows={ranked as AssistantRankedSource[]} />
       <CandidateSources rows={candidates as AssistantCandidateSource[]} />
       <ChunkSources rows={chunks as AssistantChunkSource[]} openIndex={openIndex} />
     </>
+  );
+}
+
+/**
+ * Le classement lui-même. On montre POURQUOI chacun est à sa place — critères
+ * couverts en vert, critères requis manquants en rouge — pour que la décision
+ * reste celle du recruteur, pas celle d'un score opaque.
+ */
+function RankedSources({ rows }: { rows: AssistantRankedSource[] }) {
+  if (!rows.length) return null;
+  const sorted = [...rows].sort((a, b) => a.rank - b.rank);
+  return (
+    <Table<AssistantRankedSource>
+      rowKey="candidate_id"
+      dataSource={sorted}
+      pagination={false}
+      size="small"
+      style={{ marginTop: 12 }}
+      scroll={{ x: "max-content" }}
+      columns={[
+        { title: "#", dataIndex: "rank", key: "rank", width: 44 },
+        {
+          title: "Candidat",
+          key: "name",
+          render: (_: unknown, r: AssistantRankedSource) => (
+            <Space direction="vertical" size={0}>
+              <strong>{r.name}</strong>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {[r.education_level, r.field_of_study].filter(Boolean).join(" · ") || "—"}
+              </Text>
+            </Space>
+          ),
+        },
+        {
+          title: "Adéquation",
+          dataIndex: "score",
+          key: "score",
+          width: 130,
+          render: (v: number) => (
+            <Progress percent={Math.round(v * 100)} size="small" style={{ width: 110 }} />
+          ),
+        },
+        {
+          title: "Couvre",
+          dataIndex: "matched",
+          key: "matched",
+          render: (m: string[]) => (
+            <Space size={4} wrap>
+              {m.map((s) => (
+                <Tag key={s} color="green">
+                  {s}
+                </Tag>
+              ))}
+            </Space>
+          ),
+        },
+        {
+          title: "Manque",
+          dataIndex: "missing",
+          key: "missing",
+          render: (m: string[]) =>
+            m.length ? (
+              <Space size={4} wrap>
+                {m.map((s) => (
+                  <Tag key={s} color="red">
+                    {s}
+                  </Tag>
+                ))}
+              </Space>
+            ) : (
+              <Text type="secondary">—</Text>
+            ),
+        },
+      ]}
+    />
   );
 }
 

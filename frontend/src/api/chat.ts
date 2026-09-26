@@ -22,6 +22,7 @@ export type AgentEvent =
 
 /** Libellés lisibles des outils, pour afficher ce que l'assistant est en train de faire. */
 export const TOOL_LABELS: Record<string, string> = {
+  rank_candidates: "Classement des candidats",
   search_candidates: "Recherche de candidats",
   search_documents: "Recherche documentaire",
   explain_assignment_score: "Analyse du score d'affectation",

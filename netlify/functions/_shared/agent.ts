@@ -19,6 +19,8 @@ import {
   retrieveDocChunks,
 } from "./rag";
 import { admin } from "./supabase";
+import { loadApplicantPool, loadOpenOffersWithSkills } from "./db";
+import { buildFieldProfile, rankApplicants } from "./ranking";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -86,17 +88,76 @@ Règles :
   phrase — « d'après politique-stage.pdf, la durée maximale est de six mois ».
   N'utilise JAMAIS de marqueurs de citation techniques : ni 【1†L1-L5】, ni
   【…】, ni [1†…]. Ces symboles ne veulent rien dire pour l'utilisateur, qui voit
-  déjà les extraits sous ta réponse.`;
+  déjà les extraits sous ta réponse.
+- PÉRIMÈTRE : tu ne traites QUE le recrutement des stagiaires — candidats et
+  CV, comparaison et classement de profils, offres, affectations, réservations
+  et politique de stage. Pour tout le reste (culture générale, code, rédaction
+  sans lien, opinions, autres entreprises, conseils personnels) réponds
+  exactement : « Je ne traite que les questions sur le recrutement des
+  stagiaires : candidats, offres, affectations et politique de stage. » et
+  n'appelle aucun outil.
+- CHERCHER ≠ ÉVALUER. search_candidates retrouve une PERSONNE ou un mot-clé
+  (« la filière de X », « qui connaît SAP »). rank_candidates CLASSE des profils
+  (« le meilleur », « les 3 meilleurs », « classe », « compare », « shortlist »,
+  « qui recommandes-tu pour »). Ne réponds JAMAIS à une question de classement
+  avec search_candidates : son score mesure une ressemblance de mots, pas une
+  adéquation. Présente le classement dans l'ordre renvoyé, sans le réordonner,
+  une ligne par candidat avec la raison décisive (compétences couvertes, ce qui
+  manque). S'il est vide, dis-le en une phrase.
+- ÉQUITÉ : ne classe, ne filtre, ne déduis et ne mentionne JAMAIS l'âge, le
+  sexe, l'origine ou la nationalité, la religion, la situation familiale,
+  l'état de santé ou l'apparence d'un candidat — même si le CV les contient.
+  Une demande fondée sur ces critères est refusée : « Je ne peux pas classer
+  des candidats selon ce critère : seules les compétences, la formation et
+  l'expérience sont prises en compte. »`;
 
 export const TOOLS = [
   {
     type: "function" as const,
     function: {
+      name: "rank_candidates",
+      description:
+        "ÉVALUATION : classe les candidats pour une filière, une offre précise ou un jeu " +
+        "de compétences, avec le moteur d'affectation (couverture des compétences " +
+        "pondérée + adéquation de formation). À utiliser pour « le meilleur », « les N " +
+        "meilleurs », « classe », « compare », « shortlist ». Renvoie pour chacun le " +
+        "score, les critères couverts et les critères requis manquants.",
+      parameters: {
+        type: "object",
+        properties: {
+          field: {
+            type: "string",
+            description:
+              "Filière visée, telle que l'utilisateur la formule : « data science », " +
+              "« génie électrique », « informatique »…",
+          },
+          offer: {
+            type: "string",
+            description: "Titre (ou id) d'une offre précise, si la question porte sur une offre.",
+          },
+          skills: {
+            type: "array",
+            items: { type: "string" },
+            description: "Compétences explicitement demandées (« python », « sql »…).",
+          },
+          min_education_level: {
+            type: "string",
+            description: "Niveau minimum, uniquement si l'utilisateur l'exige (« Bac+5 »).",
+          },
+          top_k: { type: "number", description: "Nombre de candidats à renvoyer (défaut 5, max 10)." },
+        },
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
       name: "search_candidates",
       description:
-        "Recherche des candidats dans la base par compétences, filière ou texte du CV. " +
-        "À utiliser dès qu'on cherche des profils. Renvoie aussi un diagnostic expliquant " +
-        "pourquoi la recherche est vide le cas échéant.",
+        "RECHERCHE : retrouve un candidat précis (par son nom) ou des CV contenant un " +
+        "mot-clé. Ne sert PAS à désigner les meilleurs — pour classer, comparer ou " +
+        "recommander, utilise rank_candidates. Renvoie aussi un diagnostic si la " +
+        "recherche est vide.",
       parameters: {
         type: "object",
         properties: {
@@ -232,7 +293,12 @@ export function toolResultContent(payload: unknown, budget = MAX_TOOL_RESULT_CHA
   // Les charges utiles d'outils sont des objets à une clé « liste » (extraits,
   // candidats, offres, réservations) plus des champs d'explication courts.
   const clone = { ...(payload as Record<string, unknown>) };
-  const listKey = Object.keys(clone).find((k) => Array.isArray(clone[k]));
+  // La liste la plus VOLUMINEUSE, pas la première rencontrée : la charge du
+  // classement porte `based_on_offers` avant `results`, et c'est bien `results`
+  // qu'il faut rogner.
+  const listKey = Object.keys(clone)
+    .filter((k) => Array.isArray(clone[k]))
+    .sort((a, b) => JSON.stringify(clone[b]).length - JSON.stringify(clone[a]).length)[0];
   if (!listKey) return JSON.stringify({ erreur: "Résultat trop volumineux pour le contexte." });
 
   const items = [...(clone[listKey] as unknown[])];
@@ -298,6 +364,42 @@ export async function runTool(
                 "avant de répondre : la personne peut apparaître dans un document déposé.",
             },
         sources: results,
+      };
+    }
+    case "rank_candidates": {
+      const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+      const skills = Array.isArray(args.skills)
+        ? args.skills.filter((x): x is string => typeof x === "string" && x.trim() !== "")
+        : typeof args.skills === "string" && args.skills.trim()
+          ? args.skills.split(/[,;]/).map((x) => x.trim()).filter(Boolean)
+          : [];
+
+      const [offers, pool] = await Promise.all([loadOpenOffersWithSkills(), loadApplicantPool()]);
+      const built = buildFieldProfile(
+        {
+          field: str(args.field),
+          offer: str(args.offer),
+          skills,
+          minEducationLevel: str(args.min_education_level),
+        },
+        offers,
+      );
+      if (!built.ok) {
+        // Pas de devinette : on rend au modèle la liste de ce qui existe.
+        return { payload: { erreur: built.error, disponibles: built.known }, sources: [] };
+      }
+
+      const ranking = rankApplicants(built.profile, pool, clampInt(args.top_k, 1, 10, 5));
+      return {
+        payload: ranking.results.length
+          ? ranking
+          : {
+              ...ranking,
+              explication:
+                `Aucun des ${ranking.evaluated} candidats analysés ne couvre les critères ` +
+                `de « ${ranking.profile} ». Dis-le en une phrase.`,
+            },
+        sources: ranking.results.map((r) => ({ type: "ranked_candidate", ...r })),
       };
     }
     case "search_documents": {
