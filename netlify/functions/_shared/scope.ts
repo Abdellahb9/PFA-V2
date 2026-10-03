@@ -17,7 +17,7 @@
 import type { ChatCompletionCreateParamsNonStreaming } from "groq-sdk/resources/chat/completions";
 import { EXTRACT_MODEL, groqClient, groqEnabled } from "./groq";
 import { normalize } from "./skills";
-import type { AgentEvent } from "./agent";
+import type { AgentEvent } from "./rag";
 
 export type ScopeVerdict = "in" | "off_topic" | "discriminatory";
 

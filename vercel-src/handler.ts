@@ -19,6 +19,7 @@ import offerRankings from "../netlify/functions/offer-rankings";
 import capacityForecast from "../netlify/functions/capacity-forecast";
 import createUploadUrl from "../netlify/functions/create-upload-url";
 import analyzeBackground from "../netlify/functions/analyze-application-background";
+import ragEmbedBackground from "../netlify/functions/rag-embed-background";
 import assistant from "../netlify/functions/assistant";
 import bookings from "../netlify/functions/bookings";
 import offerSwitchRequests from "../netlify/functions/offer-switch-requests";
@@ -79,6 +80,7 @@ const routes: Route[] = [
   { re: /^\/api\/my-applications\/?$/, fn: myApplications },
   { re: /^\/api\/create-upload-url\/?$/, fn: createUploadUrl },
   { re: /^\/api\/analyze-application-background\/?$/, fn: analyzeBackground },
+  { re: /^\/api\/rag-embed-background\/?$/, fn: ragEmbedBackground },
 ];
 
 // Web-standard router (what the reused Netlify handlers expect). The Request
@@ -96,6 +98,7 @@ export async function webHandler(request: Request): Promise<Response> {
         hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
         hasServiceKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
         hasGroqKey: Boolean(process.env.GROQ_API_KEY),
+        hasMistralKey: Boolean(process.env.MISTRAL_API_KEY),
       }),
       { status: 200, headers: { "content-type": "application/json" } },
     );

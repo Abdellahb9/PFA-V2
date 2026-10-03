@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "eval:scope": "tsx scripts/eval-scope.ts"
+    "eval:scope": "tsx scripts/eval-scope.ts",
+    "rag:demo": "tsx scripts/rag-demo.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",
@@ -17,6 +18,8 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-pgvector": "^0.0.9",
     "@netlify/functions": "^2.8.2",
     "@types/node": "^22.10.2",
     "@types/ws": "^8.5.13",

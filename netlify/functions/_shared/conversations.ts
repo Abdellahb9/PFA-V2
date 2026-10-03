@@ -89,7 +89,7 @@ export async function getHistory(
   // Les `limit` derniers messages, remis dans l'ordre chronologique.
   const { data, error } = await sb
     .from("assistant_messages")
-    .select("role, content")
+    .select("role, content, sources")
     .eq("conversation_id", conversationId)
     .order("id", { ascending: false })
     .limit(limit);
@@ -97,9 +97,41 @@ export async function getHistory(
     console.error("history read failed:", error.message);
     return [];
   }
-  return (data ?? [])
-    .reverse()
-    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+  return (data ?? []).reverse().map((m) => {
+    const role = m.role as "user" | "assistant";
+    const note = role === "assistant" ? contextNote(m.sources) : "";
+    return { role, content: note ? `${m.content}\n\n${note}` : m.content };
+  });
+}
+
+/**
+ * Rappel compact de ce qu'un tour a trouvé, rejoué avec sa réponse.
+ *
+ * Seule la PROSE de l'assistant était rejouée : une réponse brève (« Génie
+ * informatique. ») perdait le candidat et son identifiant, et « et son
+ * université ? » obligeait le modèle à tout rechercher à nouveau.
+ */
+export function contextNote(sources: unknown, max = 6): string {
+  if (!Array.isArray(sources) || !sources.length) return "";
+  const people: string[] = [];
+  const docs: string[] = [];
+  for (const s of sources as Record<string, unknown>[]) {
+    if (!s || typeof s !== "object") continue;
+    if ((s.type === "candidate" || s.type === "ranked_candidate") && s.name) {
+      const id = s.candidate_id ?? s.candidateId;
+      people.push(id != null ? `${s.name} (#${id})` : String(s.name));
+    } else if (s.type === "matching_explanation" && s.assignment_id != null) {
+      people.push(`affectation #${s.assignment_id}`);
+    } else if (s.type === "doc_chunk" && s.source_document) {
+      docs.push(s.page != null ? `${s.source_document} p.${s.page}` : String(s.source_document));
+    }
+  }
+  const uniq = (xs: string[]) => [...new Set(xs)].slice(0, max);
+  const parts = [
+    people.length ? `candidats — ${uniq(people).join(", ")}` : "",
+    docs.length ? `documents — ${uniq(docs).join(", ")}` : "",
+  ].filter(Boolean);
+  return parts.length ? `[contexte : ${parts.join(" ; ")}]` : "";
 }
 
 export async function listConversations(userId: string, limit = 20) {

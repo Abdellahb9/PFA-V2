@@ -1,15 +1,14 @@
 // Assistant RAG : conversation en flux + gestion de la base documentaire.
 // POST   /api/assistant/chat                staff (l'assistant lit toute la base)
-// GET    /api/assistant/conversations       fils de l'appelant uniquement
+// GET    /api/assistant/conversations[/:id] fils de l'appelant uniquement
 // GET    /api/assistant/documents           staff
-// POST   /api/assistant/documents           staff (multipart: file [+ title])
+// POST   /api/assistant/documents           staff (multipart: file [+ title, doc_type, replace])
 // DELETE /api/assistant/documents/:name     staff
 import { admin } from "./_shared/supabase";
 import { requireStaff, requireUser } from "./_shared/auth";
 import { json, fail, noContent, methodNotAllowed, readBody } from "./_shared/http";
-import { extractCvText } from "./_shared/cv";
-import { runAgent, sanitizeHistory } from "./_shared/agent";
 import { classifyScope, refusalStream } from "./_shared/scope";
+import { triggerEmbedding } from "./_shared/trigger-analysis";
 import {
   getConversation,
   getHistory,
@@ -17,7 +16,18 @@ import {
   resolveConversation,
   saveMessage,
 } from "./_shared/conversations";
-import { ingestDocumentText, listDocumentCounts, type DocType } from "./_shared/rag";
+import {
+  ALLOWED_EXTENSIONS,
+  DocumentExistsError,
+  EmptyDocumentError,
+  getStore,
+  guessDocType,
+  ingestDocument,
+  isDocType,
+  MAX_UPLOAD_BYTES,
+  runAgent,
+  sanitizeHistory,
+} from "./_shared/rag";
 
 export const config = {
   path: [
@@ -29,10 +39,11 @@ export const config = {
   ],
 };
 
-// Un message d'assistant coûte jusqu'à 5 appels LLM facturés plus autant de
-// requêtes de recherche. Sans plafond, un seul compte peut vider le quota.
+// Un message coûte jusqu'à 5 appels LLM facturés plus autant de recherches.
+// Sans plafond, un seul compte peut vider le quota.
 const RATE_LIMIT_PER_HOUR = 60;
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+// Marge pour l'enveloppe multipart (frontières, en-têtes, champs texte).
+const MULTIPART_OVERHEAD = 64 * 1024;
 
 async function checkRateLimit(userId: string): Promise<Response | null> {
   const since = new Date(Date.now() - 3600_000).toISOString();
@@ -59,12 +70,13 @@ async function checkRateLimit(userId: string): Promise<Response | null> {
   return null;
 }
 
-// Conversation en flux (SSE). Chaque événement est une ligne `data: {json}`.
+// ---- Conversation (SSE) --------------------------------------------------------------
+
 async function handleChat(req: Request, userId: string): Promise<Response> {
   const body = await readBody(req);
-  // Le client n'envoie QUE son nouveau message. Les tours précédents sont relus
-  // en base : un historique fourni par le navigateur permettrait de forger de
-  // faux tours « assistant » et donc de dicter au modèle ce qu'il a « déjà dit ».
+  // Le client n'envoie QUE son nouveau message ; les tours précédents sont relus
+  // en base. Un historique fourni par le navigateur permettrait de forger de
+  // faux tours « assistant ».
   const message = String(body.message ?? "").trim();
   if (!message) return fail("Message vide");
 
@@ -73,9 +85,6 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
     body.conversation_id != null ? Number(body.conversation_id) : null,
     message,
   );
-  // getHistory refiltre sur user_id : un id deviné ne donne pas le fil d'autrui.
-  // sanitizeHistory borne ensuite la taille — un tour enregistré n'a pas de
-  // limite de longueur en base, et rien ne doit gonfler le contexte sans borne.
   const history = sanitizeHistory([
     ...(await getHistory(userId, conversationId)),
     { role: "user", content: message },
@@ -83,9 +92,7 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
   await saveMessage(conversationId, { role: "user", content: message });
 
   // Filtre de périmètre AVANT l'agent : une question hors recrutement, ou une
-  // demande de classement discriminatoire, n'atteint jamais le modèle principal
-  // ni ses outils. La dernière réponse de l'assistant sert de contexte pour
-  // juger une relance courte (« et en génie électrique ? »).
+  // demande de classement discriminatoire, n'atteint jamais le modèle principal.
   const lastAssistant = [...history].reverse().find((m) => m.role === "assistant")?.content;
   const scope = await classifyScope(message, lastAssistant);
   if (scope.verdict !== "in") {
@@ -95,17 +102,15 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      // Le flux peut être coupé par le client à tout moment : une écriture sur
-      // un contrôleur fermé lève, y compris depuis le `catch`. On absorbe.
+      // Le client peut couper le flux à tout moment : on absorbe l'écriture ratée.
       const send = (event: unknown) => {
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
         } catch {
-          /* client parti : plus rien à diffuser */
+          /* client parti */
         }
       };
-      // Le fil est annoncé en premier : le client peut le retenir même si la
-      // génération échoue ensuite.
+      // Le fil est annoncé en premier : le client le retient même en cas d'échec.
       send({ type: "conversation", conversation_id: conversationId });
       let answer = "";
       const tools: string[] = [];
@@ -126,15 +131,9 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
         });
         send({ type: "done" });
       } finally {
-        // Une réponse partielle vaut mieux qu'un tour perdu : on enregistre ce
-        // qui a été produit, même si le flux s'est interrompu en cours de route.
+        // Une réponse partielle vaut mieux qu'un tour perdu.
         if (answer.trim()) {
-          await saveMessage(conversationId, {
-            role: "assistant",
-            content: answer,
-            tools,
-            sources,
-          });
+          await saveMessage(conversationId, { role: "assistant", content: answer, tools, sources });
         }
         try {
           controller.close();
@@ -150,13 +149,20 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive",
-      // Empêche la bufferisation par un proxy intermédiaire.
       "x-accel-buffering": "no",
     },
   });
 }
 
+// ---- Base documentaire --------------------------------------------------------------
+
 async function handleUpload(req: Request): Promise<Response> {
+  // Refuser AVANT de lire le corps : formData() met tout le fichier en mémoire.
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  if (declared > MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD) {
+    return fail(`Fichier trop volumineux (maximum ${MAX_UPLOAD_BYTES / 1024 / 1024} Mo)`, 413);
+  }
+
   let form: FormData;
   try {
     form = await req.formData();
@@ -165,81 +171,61 @@ async function handleUpload(req: Request): Promise<Response> {
   }
   const file = form.get("file");
   if (!(file instanceof File) || file.size === 0) return fail("Fichier manquant ou vide");
-  const name = (file.name || "").toLowerCase();
-  if (!/\.(pdf|docx|txt)$/.test(name)) {
-    return fail("Format non supporté (PDF, DOCX ou TXT attendu)", 415);
+  if (!ALLOWED_EXTENSIONS.test(file.name || "")) {
+    return fail("Format non supporté (PDF, DOCX, TXT ou MD attendu)", 415);
   }
+  // Le Content-Length peut manquer (transfert par morceaux) : on revérifie.
   if (file.size > MAX_UPLOAD_BYTES) {
     return fail(`Fichier trop volumineux (maximum ${MAX_UPLOAD_BYTES / 1024 / 1024} Mo)`, 413);
   }
 
-  const sourceDocument = String(form.get("title") ?? "").trim() || file.name || "document";
-  // Le panneau s'appelle « politique de stage » mais acceptait n'importe quoi :
-  // un CV s'y retrouvait indexé et remontait sur des questions de règlement.
-  // Le type est explicite, avec un repli déduit du nom de fichier.
+  const name = String(form.get("title") ?? "").trim() || file.name || "document";
   const requested = String(form.get("doc_type") ?? "").trim();
-  const docType: DocType = (["policy", "cv", "other"] as const).includes(
-    requested as DocType,
-  )
-    ? (requested as DocType)
-    : /(^|[^a-z])cv([^a-z]|$)|resume|curriculum/i.test(sourceDocument + " " + file.name)
-      ? "cv"
-      : "policy";
-  // Réutiliser un titre existant remplaçait silencieusement les extraits d'un
-  // autre document. On l'exige explicitement plutôt que de le deviner.
-  if (String(form.get("replace") ?? "") !== "true") {
-    const { count } = await admin()
-      .from("document_chunks")
-      .select("id", { count: "exact", head: true })
-      .eq("source_document", sourceDocument);
-    if (count) {
-      return fail(
-        `Un document nommé « ${sourceDocument} » existe déjà. Renommez-le, ou renvoyez la ` +
-          `requête avec replace=true pour le remplacer.`,
-        409,
-      );
-    }
+  const docType = isDocType(requested) ? requested : guessDocType(name, file.name);
+  const replace = String(form.get("replace") ?? "") === "true";
+
+  try {
+    const result = await ingestDocument({
+      name,
+      data: new Uint8Array(await file.arrayBuffer()),
+      filename: file.name,
+      docType,
+      replace,
+    });
+    if (result.embeddings === "pending") triggerEmbedding(req);
+    return json({ ...result, status: "ingested" });
+  } catch (err) {
+    // L'existence est vérifiée dans la transaction d'écriture : pas de course possible.
+    if (err instanceof DocumentExistsError) return fail(err.message, 409);
+    if (err instanceof EmptyDocumentError) return fail(err.message);
+    console.error("document ingestion failed:", err);
+    return fail(err instanceof Error ? err.message : "Échec de l'ingestion", 500);
   }
-
-  const data = new Uint8Array(await file.arrayBuffer());
-  const text = await extractCvText(data, file.name);
-  if (!text.trim()) return fail("Aucun texte extrait du document");
-
-  // Découpage + insertion sont rapides sans embeddings : traitement synchrone,
-  // donc 200 et non 202 — il n'y a aucune tâche de fond à suivre.
-  const chunks = await ingestDocumentText(sourceDocument, text, docType);
-  return json({ source_document: sourceDocument, doc_type: docType, status: "ingested", chunks });
 }
 
 async function listDocuments(): Promise<Response> {
-  // Le comptage se fait en SQL : ramener toutes les lignes pour les compter en
-  // JS plafonnait à la limite de lignes de PostgREST, ce qui faussait les
-  // totaux et pouvait faire disparaître un document entier de la liste.
   try {
-    return json(await listDocumentCounts());
+    return json(await getStore().listDocuments());
   } catch (err) {
     return fail(err instanceof Error ? err.message : "Erreur base documentaire", 500);
   }
 }
 
 async function deleteDocument(name: string): Promise<Response> {
-  const sb = admin();
-  const { data, error } = await sb
-    .from("document_chunks")
-    .delete()
-    .eq("source_document", name)
-    .select("id");
-  if (error) return fail(error.message, 500);
-  if (!data?.length) return fail("Document introuvable", 404);
-  return noContent();
+  try {
+    return (await getStore().deleteDocument(name)) ? noContent() : fail("Document introuvable", 404);
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "Erreur base documentaire", 500);
+  }
 }
+
+// ---- Routage -----------------------------------------------------------------------
 
 export default async (req: Request, ctx: { params?: Record<string, string> }): Promise<Response> => {
   const { pathname } = new URL(req.url);
 
   // L'assistant interroge TOUTE la base (profils, réservations, scores) : il est
-  // réservé au personnel. Un candidat authentifié y lisait les profils de ses
-  // concurrents, leurs universités et leurs affectations.
+  // réservé au personnel.
   if (pathname.endsWith("/chat")) {
     const user = await requireStaff(req);
     if (user instanceof Response) return user;
@@ -262,7 +248,7 @@ export default async (req: Request, ctx: { params?: Record<string, string> }): P
     return json(await listConversations(user.id));
   }
 
-  // Knowledge-base management is staff-only.
+  // Gestion de la base documentaire : personnel uniquement.
   const user = await requireStaff(req);
   if (user instanceof Response) return user;
 
