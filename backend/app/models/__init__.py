@@ -9,7 +9,6 @@ from app.models.assignment import Assignment, AssignmentStatus
 from app.models.candidate import Candidate, CandidateSkill
 from app.models.department import Department
 from app.models.document import Document, DocumentKind
-from app.models.document_chunk import DocumentChunk
 from app.models.matching_run import MatchingRun, MatchingRunStatus
 from app.models.notification import Notification, NotificationStatus
 from app.models.offer import InternshipOffer, OfferSkill, OfferStatus
@@ -25,7 +24,6 @@ __all__ = [
     "CandidateSkill",
     "Department",
     "Document",
-    "DocumentChunk",
     "DocumentKind",
     "InternshipOffer",
     "OfferSkill",

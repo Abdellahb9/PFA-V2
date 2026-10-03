@@ -92,10 +92,6 @@ def build_llm():
     raise LLMConfigurationError(f"Unsupported LLM provider: {settings.LLM_PROVIDER}")
 
 
-# Conservé pour les appelants historiques ; `build_llm` est le nom public.
-_build_llm = build_llm
-
-
 def extract_structured(cv_text: str) -> dict | None:
     """Return structured CV fields via the LLM, or None on failure/disabled."""
     if not is_enabled():

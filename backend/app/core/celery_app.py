@@ -15,7 +15,6 @@ celery_app = Celery(
         "app.tasks.cv_analysis",
         "app.tasks.matching_tasks",
         "app.tasks.notifications",
-        "app.tasks.rag_ingestion",
     ],
 )
 
