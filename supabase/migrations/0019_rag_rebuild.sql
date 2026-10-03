@@ -5,6 +5,9 @@
 -- existants sont SUPPRIMÉS : les documents doivent être redéposés, ce qui les
 -- redécoupe avec le nouveau découpeur (pages, intertitres) et les vectorise.
 --
+-- Rejouable : relancer ce fichier sur une base déjà migrée ne casse rien et
+-- CONSERVE les documents déjà déposés dans rag_documents / rag_chunks.
+--
 --   rag_documents   un document déposé : nom unique, type, nombre d'extraits
 --   rag_chunks      ses extraits : texte, page, intertitre, tsvector, vecteur
 --
@@ -110,7 +113,7 @@ drop table if exists public.document_chunks;
 
 -- ---- Tables ------------------------------------------------------------------
 
-create table public.rag_documents (
+create table if not exists public.rag_documents (
   id          bigserial primary key,
   name        text not null unique check (btrim(name) <> ''),
   doc_type    text not null default 'policy' check (doc_type in ('policy', 'cv', 'other')),
@@ -119,7 +122,7 @@ create table public.rag_documents (
   updated_at  timestamptz not null default now()
 );
 
-create table public.rag_chunks (
+create table if not exists public.rag_chunks (
   id           bigserial primary key,
   document_id  bigint not null references public.rag_documents (id) on delete cascade,
   chunk_index  int  not null,
@@ -139,13 +142,13 @@ create table public.rag_chunks (
   unique (document_id, chunk_index)
 );
 
-create index ix_rag_chunks_document on public.rag_chunks (document_id);
-create index ix_rag_chunks_fts on public.rag_chunks using gin (search_vector);
+create index if not exists ix_rag_chunks_document on public.rag_chunks (document_id);
+create index if not exists ix_rag_chunks_fts on public.rag_chunks using gin (search_vector);
 -- HNSW plutôt qu'ivfflat : aucun entraînement, donc pas d'index dégénéré
 -- construit sur une table vide (le défaut de l'ancien index Python).
-create index ix_rag_chunks_embedding on public.rag_chunks
+create index if not exists ix_rag_chunks_embedding on public.rag_chunks
   using hnsw (embedding extensions.vector_cosine_ops);
-create index ix_rag_chunks_pending on public.rag_chunks (id) where embedding is null;
+create index if not exists ix_rag_chunks_pending on public.rag_chunks (id) where embedding is null;
 
 alter table public.rag_documents enable row level security;
 alter table public.rag_chunks enable row level security;

@@ -297,3 +297,13 @@ describe("rag_search_chunks — recherche hybride", () => {
     expect(rows.some((r) => r.content.includes("gratification"))).toBe(false);
   });
 });
+
+describe("migration 0019 — rejouable", () => {
+  it("se rejoue sur une base déjà migrée et CONSERVE les documents", async () => {
+    await store.replaceDocument("rejeu.pdf", "policy", [{ content: "Durée : six mois.", page: 1, heading: null }], true);
+    const before = await store.listDocuments();
+    await applyMigrations(db, (f) => f.startsWith("0019_"));
+    expect(await store.listDocuments()).toEqual(before);
+    expect(before.some((d) => d.source_document === "rejeu.pdf")).toBe(true);
+  });
+});
