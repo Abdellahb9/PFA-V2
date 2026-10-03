@@ -257,7 +257,8 @@ function ChunkSources({
           <Space size={6} wrap>
             <FilePdfOutlined />
             <strong>{c.source_document}</strong>
-            <Tag>extrait #{c.chunk_index + 1}</Tag>
+            {c.page != null ? <Tag>p. {c.page}</Tag> : <Tag>extrait #{c.chunk_index + 1}</Tag>}
+            {c.heading && <Tag>{c.heading}</Tag>}
             <Tag color="green">pertinence {Math.round(c.similarity * 100)}%</Tag>
           </Space>
         ),
@@ -480,7 +481,7 @@ export default function AssistantPage() {
       <Col xs={24} lg={8}>
         <Card title="Base documentaire (politique de stage)">
           <Upload.Dragger
-            accept=".pdf,.docx,.txt"
+            accept=".pdf,.docx,.txt,.md"
             multiple={false}
             showUploadList={false}
             customRequest={async ({ file, onSuccess, onError }) => {
@@ -514,7 +515,7 @@ export default function AssistantPage() {
             <p className="ant-upload-drag-icon">
               <InboxOutlined style={{ color: token.colorPrimary }} />
             </p>
-            <p className="ant-upload-text">Déposez un document PDF, DOCX ou TXT</p>
+            <p className="ant-upload-text">Déposez un document PDF, DOCX, TXT ou MD</p>
             <p className="ant-upload-hint">
               Il sera découpé et indexé en recherche plein-texte, puis interrogeable par
               l'assistant.
@@ -578,6 +579,11 @@ export default function AssistantPage() {
                           <Tag color={d.doc_type === "cv" ? "gold" : "blue"}>
                             {DOC_TYPE_LABEL[d.doc_type] ?? d.doc_type}
                           </Tag>
+                          {/* La recherche par le sens n'atteint ce document qu'une
+                              fois ses extraits vectorisés (tâche de fond). */}
+                          {d.embedded != null && d.embedded < d.chunks && (
+                            <Tag color="orange">indexation sémantique en cours</Tag>
+                          )}
                         </Space>
                       }
                       description={`${d.chunks} extrait${d.chunks > 1 ? "s" : ""} indexé${

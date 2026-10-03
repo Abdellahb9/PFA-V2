@@ -282,10 +282,10 @@ export interface DashboardData {
 }
 
 // ---- Assistant RAG ----
-// `similarity` est un score ABSOLU (ts_rank_cd, dans [0, 1[) renvoyé par
-// Postgres : il se compare d'une requête à l'autre. Il n'est plus normalisé sur
-// le meilleur résultat, ce qui affichait « 100 % » sur le premier extrait même
-// lorsqu'il était hors sujet.
+// `similarity` est un score ABSOLU dans [0, 1], comparable d'une requête à
+// l'autre. Pour un candidat : rang plein-texte ou correspondance de nom. Pour un
+// extrait : le meilleur du rang plein-texte et du cosinus (mistral-embed)
+// recalé au-dessus de son plancher. Jamais normalisé sur le meilleur résultat.
 export interface AssistantCandidateSource {
   type: "candidate";
   candidate_id: number;
@@ -303,6 +303,11 @@ export interface AssistantChunkSource {
   chunk_index: number;
   text: string;
   similarity: number;
+  doc_type?: DocType;
+  /** Page du PDF d'origine ; absente pour un DOCX ou un texte brut. */
+  page?: number | null;
+  /** Intertitre (article, section) qui gouverne l'extrait. */
+  heading?: string | null;
 }
 
 export interface AssistantExplanationSource {
@@ -361,6 +366,8 @@ export interface KnowledgeDocument {
   source_document: string;
   chunks: number;
   doc_type: DocType;
+  /** Extraits déjà vectorisés : < chunks tant que la tâche de fond travaille. */
+  embedded?: number;
 }
 
 // ---- Échange d'offre ----
