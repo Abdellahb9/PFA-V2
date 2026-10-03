@@ -20,7 +20,7 @@ flowchart TB
   end
 
   subgraph SUPABASE["Supabase"]
-    PG["«device» PostgreSQL<br/>tables métier (RLS activé)<br/>document_chunks + FTS bilingue<br/>cache d'analyse CV"]:::node
+    PG["«device» PostgreSQL<br/>tables métier (RLS activé)<br/>rag_chunks + recherche hybride (FTS + pgvector)<br/>cache d'analyse CV"]:::node
     AUTH["«executionEnvironment» Auth"]:::node
     STORAGE["«device» Storage<br/>bucket documents (CV)"]:::node
   end

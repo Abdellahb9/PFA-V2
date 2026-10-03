@@ -85,7 +85,9 @@ PFA/
 │   │       ├── 0001_initial_schema.py    # All core tables
 │   │       ├── 0002_enable_rls.py        # Row-level security
 │   │       ├── 0003_index_foreign_keys.py
-│   │       └── 0004_document_chunks.py   # pgvector RAG chunks table
+│   │       ├── 0004_document_chunks.py   # pgvector RAG chunks table (dropped by 0006)
+│   │       ├── 0005_vector_indexes.py
+│   │       └── 0006_drop_document_chunks.py # Python RAG retired
 │   ├── app/
 │   │   ├── api/
 │   │   │   ├── deps.py             # get_current_user / role dependencies
@@ -141,8 +143,7 @@ PFA/
 │   │   └── tasks/
 │   │       ├── cv_analysis.py      # Celery: parse CV → candidate profile
 │   │       ├── matching_tasks.py   # Celery: run matching
-│   │       ├── notifications.py    # Celery: notification fan-out
-│   │       └── rag_ingestion.py    # Celery: ingest knowledge document
+│   │       └── notifications.py    # Celery: notification fan-out
 │   ├── pyproject.toml              # ruff/black/pytest config (pythonpath=["."])
 │   ├── requirements.txt
 │   ├── scripts/init_db.sql         # DB bootstrap (extensions)
@@ -337,7 +338,7 @@ Browser → Nginx → FastAPI (/api/v1) → SQLAlchemy → PostgreSQL(pgvector)
 | `netlify/functions/*.ts` | Each file exports a Web-API handler + `config.path`; Netlify routes natively |
 | `api/[...path].ts` (Vercel) | Imports `api/_handler.cjs` (esbuild bundle of every Netlify handler + a route table) — built by `scripts/bundle-api.mjs` during `vercel-build` |
 | `backend/app/main.py` | FastAPI app: CORS → `api_router` (v1) → startup seed (first admin; refuses default password in production) |
-| `backend/app/core/celery_app.py` | Celery worker/beat: `cv_analysis`, `matching_tasks`, `notifications`, `rag_ingestion` |
+| `backend/app/core/celery_app.py` | Celery worker/beat: `cv_analysis`, `matching_tasks`, `notifications` |
 | `scripts/train_forecast.py` | Offline: trains XGBoost on (synthetic or Supabase) history → `forecast_model.json` |
 
 ---
@@ -349,7 +350,7 @@ Browser → Nginx → FastAPI (/api/v1) → SQLAlchemy → PostgreSQL(pgvector)
 - **`_shared/db.ts` / `supabase.ts`** — service-role client (bypasses RLS server-side; anon policies are deliberately empty).
 - **`_shared/cv.ts` + `cv-cache.ts`** — extract text (unpdf/mammoth), call Groq for structured profile extraction; results cached in Postgres keyed by SHA-256 of the CV text (idempotent re-analysis, cost control).
 - **`_shared/scoring.ts` + `hungarian.ts`** — candidate↔offer scoring with per-factor breakdown; Hungarian algorithm for globally optimal slot assignment. Parity-tested against the Python implementation.
-- **`_shared/rag.ts`** — the serverless RAG: classifies the query (Groq) into candidate-search / score-explanation / policy-QA; retrieval is Postgres full-text search (bilingual FR+EN tsvector, migration 0008) via the `search_document_chunks` RPC; generation via Groq with a "answer only from provided data" system prompt.
+- **`_shared/rag/`** — the serverless RAG (rebuilt in migration 0019): page- and heading-aware chunking, `mistral-embed` vectors computed by the `rag-embed-background` function, hybrid retrieval (full-text + pgvector HNSW, fused by RRF) via the `rag_search_chunks` RPC, and a Groq tool-calling agent (`runAgent`) that answers only from tool results and cites documents with their page. See `RAG_ANALYSIS.md`.
 - **`_shared/xgb-predict.ts`** — dependency-free XGBoost inference: walks the exported tree JSON (`forecast_model.json`), verified equal to Python XGBoost output.
 - **Endpoint files** — thin: parse/validate (zod) → auth → `_shared` logic → JSON response.
 
@@ -381,7 +382,7 @@ Two parallel schemas (Supabase SQL vs Alembic) covering the same entities:
 | `assignments` | AI-proposed/validated candidate↔offer matches with `match_score` + breakdown | — |
 | `matching_runs` | Batch matching executions + status | 1–N assignments |
 | `notifications` | Outbound notifications queue (legacy stack) | — |
-| `document_chunks` | RAG knowledge base: chunked policy docs. Supabase version: generated bilingual `tsvector` + GIN index + `search_document_chunks(q, top_k)` RPC. Backend version: pgvector embeddings | — |
+| `rag_documents` / `rag_chunks` | RAG knowledge base (0019, replaces `document_chunks`): one row per uploaded document, its chunks with page, heading, bilingual `tsvector` (GIN) and `vector(1024)` embedding (HNSW). RPCs `rag_replace_document`, `rag_search_chunks`, `rag_list_documents`, `rag_delete_document` | — |
 | CV analysis cache (0006) | Groq output keyed by CV-text SHA-256 | — |
 
 Migrations: `supabase/migrations/0001–0008` (apply in order via SQL editor; idempotent) and `backend/alembic/versions/0001–0004` (`alembic upgrade head`). RLS is enabled everywhere on Supabase; serverless functions use the service-role key, browsers never query tables directly (except auth/storage).

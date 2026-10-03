@@ -26,6 +26,7 @@ Aucun serveur, Docker, Celery, Redis, MinIO ni PyTorch. Coût ≈ 0 (tiers gratu
 | `SUPABASE_SERVICE_ROLE_KEY` | fonctions (**secret**) | Supabase → Settings → API → `service_role` |
 | `GROQ_API_KEY` | fonctions | console.groq.com → API Keys |
 | `GROQ_MODEL` *(optionnel)* | fonctions | ex. `llama-3.1-8b-instant` |
+| `MISTRAL_API_KEY` *(recommandé)* | fonctions (**secret**) | console.mistral.ai → API Keys. Vectorise la base documentaire (`mistral-embed`) pour la recherche par le sens ; absente, l'assistant reste en recherche plein-texte |
 | `VITE_SUPABASE_URL` | build frontend | identique à `SUPABASE_URL` |
 | `VITE_SUPABASE_ANON_KEY` | build frontend | Supabase → Settings → API → `anon` |
 | `VITE_API_URL` | build frontend | `/api` |
@@ -38,7 +39,7 @@ Aucun serveur, Docker, Celery, Redis, MinIO ni PyTorch. Coût ≈ 0 (tiers gratu
 
 > Les variables `VITE_*` sont **intégrées au bundle client** au build (publiques
 > par conception). Ne mettez **jamais** `SUPABASE_SERVICE_ROLE_KEY`,
-> `GROQ_API_KEY` ni `RESEND_API_KEY` dans une variable `VITE_*`.
+> `GROQ_API_KEY`, `MISTRAL_API_KEY` ni `RESEND_API_KEY` dans une variable `VITE_*`.
 
 > Les six dernières variables ne servent qu'à l'e-mail envoyé au stagiaire
 > après un échange d'offre approuvé. Si `RESEND_API_KEY` ou `MAIL_FROM`
@@ -51,7 +52,7 @@ Aucun serveur, Docker, Celery, Redis, MinIO ni PyTorch. Coût ≈ 0 (tiers gratu
 
 1. Créez (ou réutilisez) un projet Supabase.
 2. **SQL Editor** → exécutez **dans l'ordre** tous les fichiers de
-   [`supabase/migrations/`](supabase/migrations/) : `0001` → `0015`.
+   [`supabase/migrations/`](supabase/migrations/) : `0001` → `0019`.
    (Tables + RLS, données de démo, portail candidat, CRM admin, durcissement
    sécurité, cache d'analyse CV, base de connaissances RAG, recherche bilingue,
    période de stage, sémantique OU, conversations de l'assistant, échanges
@@ -63,6 +64,12 @@ Aucun serveur, Docker, Celery, Redis, MinIO ni PyTorch. Coût ≈ 0 (tiers gratu
    > ensuite. Sur une base déjà peuplée, comptez quelques secondes ; sans cette
    > reprise les profils déjà enregistrés sortiraient de toute recherche par
    > compétence.
+
+   > **`0019` reconstruit la base documentaire de l'assistant** (extension
+   > `vector`, tables `rag_documents` / `rag_chunks`, recherche hybride). Elle
+   > **supprime** l'ancienne table `document_chunks` : redéposez ensuite les
+   > documents depuis la page Assistant. Avec `MISTRAL_API_KEY`, la fonction de
+   > fond `rag-embed-background` les vectorise juste après chaque dépôt.
 3. **Authentication → Users → Add user** → créez votre compte admin
    (email + mot de passe **fort**). Puis dans **SQL Editor** :
    ```sql
@@ -102,6 +109,7 @@ vercel link
 vercel env add SUPABASE_URL
 vercel env add SUPABASE_SERVICE_ROLE_KEY
 vercel env add GROQ_API_KEY
+vercel env add MISTRAL_API_KEY
 vercel env add VITE_SUPABASE_URL
 vercel env add VITE_SUPABASE_ANON_KEY
 vercel env add VITE_API_URL          # = /api

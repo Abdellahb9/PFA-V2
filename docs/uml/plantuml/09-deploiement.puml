@@ -30,7 +30,7 @@ cloud "Supabase" {
   node "PostgreSQL" <<device>> as PG {
     database "phosboucraa" as DBX {
       artifact "tables métier (RLS activé)" as T1 <<table>>
-      artifact "document_chunks + FTS bilingue" as T2 <<table>>
+      artifact "rag_chunks + recherche hybride (FTS + pgvector)" as T2 <<table>>
       artifact "cache d'analyse CV" as T3 <<table>>
     }
   }

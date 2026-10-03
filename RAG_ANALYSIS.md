@@ -2,6 +2,8 @@
 
 Read-only analysis of the retrieval-augmented assistant ("Assistant IA PHOSBOUCRAA / OCP stages"). No code was modified.
 
+> **Update:** sections 1–7 describe the system **before** the rebuild on branch `rag-rebuild`. What changed, and the status of every issue below, is in [§ 8](#8-status-after-the-rebuild).
+
 ## TL;DR
 
 There are **two independent RAG implementations** in the repo:
@@ -270,3 +272,59 @@ Severity: 🔴 high · 🟠 medium · 🟡 low.
 2. Fix how `search_documents` sizes its context (#2, #3) and add a retrieval eval set (#5).
 3. Decide what happens to the Python stack (#24, #11, #12).
 4. Pre-filter `search_candidates` (#8) and persist tool context in the conversation history (#20).
+
+---
+
+## 8. Status after the rebuild
+
+The Python stack was deleted. The serverless stack was rebuilt under `netlify/functions/_shared/rag/`, with migration `supabase/migrations/0019_rag_rebuild.sql` and the background function `netlify/functions/rag-embed-background.ts`. The HTTP routes, the SSE event contract, the source shapes and the env var names are unchanged.
+
+### New architecture
+
+```mermaid
+flowchart LR
+  UP[POST /documents] --> EX[extract.ts<br/>pages] --> CH[chunking.ts<br/>900/150, page, heading] --> RD[(rag_replace_document<br/>atomic, 409 on name clash)]
+  RD -. trigger .-> BG[rag-embed-background] --> EM[embeddings.ts<br/>mistral-embed 1024-d] --> SE[(rag_set_embeddings)]
+  Q[POST /chat] --> SC[scope.ts] --> AG[agent.ts<br/>parallel tools, citation check]
+  AG --> TL[tools.ts] --> RT[retrieval.ts<br/>pool ×3, dedupe, slice] --> HS[(rag_search_chunks<br/>FTS ∪ HNSW, RRF)]
+  RT --> EQ[embedQuery<br/>null → FTS only]
+  TL --> CA[candidates.ts] --> SCS[(search_candidates<br/>index pre-filter)]
+```
+
+### Issue status
+
+| # | Issue | Status |
+|---|---|---|
+| 1 | No semantic retrieval | **Fixed.** Hybrid search: full-text and `mistral-embed` cosine (HNSW), fused with RRF in SQL. Without `MISTRAL_API_KEY` it falls back to full-text automatically. |
+| 2 | Chunks cut before reaching the model | **Fixed.** Chunks are 900 chars, so five fit whole in the 8000-char budget. When trimming is still needed, `focusText` keeps the passage around the query terms. |
+| 3 | Dedupe after `LIMIT` | **Fixed.** The RPC returns a pool of `top_k × 3`; neighbours are deduplicated **before** slicing. |
+| 4 | No reranker | **Partly.** RRF fuses two independent rankers. A cross-encoder or LLM rerank was left out on purpose: it would add latency, and it would take from the Groq quota the agent already uses. |
+| 5 | Magic floors, no eval | **Partly.** All floors live in `config.ts` and are passed to SQL as parameters. A test keeps the candidate floors in sync with SQL. An offline end-to-end test covers retrieval on a fixture. **`MIN_COSINE = 0.75` still needs calibrating on real `mistral-embed` scores.** |
+| 6 | Overlap starts mid-word | **Fixed.** The overlap starts on a sentence boundary, otherwise on a word boundary (tested). |
+| 7 | No chunk metadata | **Fixed.** Each chunk has `page` (PDF) and `heading`. The heading is indexed and embedded, and both are cited and shown in the UI. |
+| 8 | `search_candidates` full scan | **Fixed.** Pre-filter on the GIN full-text index plus a per-word trigram index on the name core. A PGlite test checks that the results match the 0017 full scan for every reference query. |
+| 9 | Extra `count(*)` on empty result | Kept on purpose (a `head` count, empty results only). |
+| 10 | Upload size checked after buffering | **Fixed.** `content-length` is checked before `formData()`, then `file.size` is checked again. |
+| 11 | Schema divergence between stacks | **Fixed.** The Python stack was removed; Alembic `0006` drops its table. |
+| 12 | Language detection drift | **Fixed.** There is one implementation now, including `était`. |
+| 13–17 | Python-only defects | **Resolved by removal.** |
+| 18 | Upload TOCTOU | **Fixed.** The existence check and the replace run in one transaction; `23505` maps to 409. |
+| 19 | Stale `docs/rag-diagnostic.sql` | **Fixed.** Rewritten for the 0019 schema, with a new vectorisation stage. |
+| 20 | Tool context lost between turns | **Fixed.** `getHistory` appends a compact `[contexte : …]` note (candidate IDs, documents and pages) to each replayed assistant turn. |
+| 21 | Scope filter fails open | Unchanged (by design). |
+| 22 | Citations not verified | **Fixed.** `unverifiedCitations` flags any document named in the answer that no tool returned, and the user sees a warning. |
+| 23 | Sequential tool calls | **Fixed.** Tool calls within one round run with `Promise.all`. |
+| 24 | Dead Python RAG | **Fixed.** Removed. |
+| 25 | Dead `_build_llm` alias | **Fixed.** Removed. |
+| 26 | Noisy SQL history | Mitigated: 0019 holds every current RAG contract in one place. |
+
+### Defects found during the rebuild (also fixed in 0019)
+- **Stopword leak across languages.** French stopwords (`est`, `la`) and question words (`quelle`) survived the English parse in `rag_tsquery`, so "quelle est la" matched almost any chunk. A word is now kept only if it carries meaning in both languages and isn't a question word.
+- **Name particle collision through the CV text.** 0017 removed "El/Ben/Aït" from the indexed name but not from the question. The CV text (weight C) still contains the full name, so "Babtich El Habib" matched "Youssef El Khattabi". The candidate query is now built from `rag_name_core(q)`.
+- **`-term` exclusions ignored in candidate search.** 0017 ranked with `ts_rank_cd` but never tested `@@`, so an excluded skill still ranked. The pre-filter enforces it now.
+- **NUL bytes in PDF text** made Postgres reject the whole document. They are now stripped at extraction.
+
+### Operations
+- Apply `0019`. It **drops** the old `document_chunks` table, so re-upload the documents afterwards.
+- Set `MISTRAL_API_KEY` on the host. The UI shows *indexation sémantique en cours* until a document's chunks are embedded.
+- To check the live system end to end: `cd netlify/functions && npm run rag:demo -- "Quelle est la durée maximale d'un stage ?"`.
