@@ -6,7 +6,7 @@
 //   2. en tâche de fond (rag-embed-background) : vectorisation des extraits en
 //      attente. Un gros PDF compte des centaines d'extraits ; les vectoriser
 //      dans la requête dépasserait le délai d'une fonction synchrone.
-import { chunkPages } from "./chunking";
+import { chunkPages, documentTitle } from "./chunking";
 import { EMBED_BATCH } from "./config";
 import { embeddingInput, embeddingsEnabled, embedTexts } from "./embeddings";
 import { extractDocument } from "./extract";
@@ -42,7 +42,7 @@ export async function ingestPages(
   docType: DocType,
   replace: boolean,
 ): Promise<IngestResult> {
-  const chunks: Chunk[] = chunkPages(pages);
+  const chunks: Chunk[] = chunkPages(pages, documentTitle(name, pages));
   if (!chunks.length) throw new EmptyDocumentError();
   const res = await getStore().replaceDocument(name, docType, chunks, replace);
   return {

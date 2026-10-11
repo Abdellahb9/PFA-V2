@@ -5,7 +5,7 @@ export * from "./config";
 export { detectLanguage, type Lang } from "./language";
 export { ragDebug, ragDebugEnabled } from "./debug";
 export { extractDocument } from "./extract";
-export { chunkPages, chunkText, headingOf, normalizeText, splitRanges } from "./chunking";
+export { chunkPages, chunkText, documentTitle, headingOf, normalizeText, splitRanges } from "./chunking";
 export { embedQuery, embedTexts, embeddingInput, embeddingsEnabled, EmbeddingError } from "./embeddings";
 export {
   DocumentExistsError,

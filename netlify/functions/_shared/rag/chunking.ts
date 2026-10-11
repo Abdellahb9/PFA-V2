@@ -24,8 +24,12 @@ export function normalizeText(text: string): string {
 // ---- Intertitres ----------------------------------------------------------------
 
 const MARKDOWN_HEADING = /^#{1,6}\s+(.+?)\s*#*$/;
+// Un numéro de SECTION (« 2. », « 2.1 », au plus deux chiffres par niveau)
+// suivi d'une lettre. Sans ces bornes, « 2024 2025 » ou « 1 500 dirhams par
+// mois » — lignes courantes dans un CV ou un tableau — devenaient des titres,
+// propagés aux extraits suivants et pondérés A dans le plein-texte.
 const NUMBERED_HEADING =
-  /^((?:article|chapitre|section|titre|annexe|part|chapter|appendix)\s+[\w.-]+\b.*|\d+(?:\.\d+)*\.?\s+\S.*)$/i;
+  /^((?:article|chapitre|section|titre|annexe|part|chapter|appendix)\s+[\w.-]+\b.*|\d{1,2}(?:\.\d{1,2})*\.?\s+\p{L}.*)$/iu;
 
 /** Une ligne est-elle un intertitre ? Renvoie son libellé, sinon null. */
 export function headingOf(line: string): string | null {
@@ -36,12 +40,62 @@ export function headingOf(line: string): string | null {
   // Une phrase qui se termine par un point n'est pas un titre.
   if (/[.;,]$/.test(t)) return null;
   if (NUMBERED_HEADING.test(t) && t.split(/\s+/).length <= 12) return t;
-  // TOUT EN CAPITALES, au moins quatre lettres.
+  // TOUT EN CAPITALES, au moins quatre lettres, sans chiffre : « TOTAL 3 000
+  // MAD » est une ligne de tableau, pas un titre.
   const letters = t.replace(/[^A-Za-zÀ-ÿ]/g, "");
-  if (letters.length >= 4 && letters === letters.toUpperCase() && /[A-ZÀ-Þ]/.test(letters)) {
+  if (
+    letters.length >= 4 &&
+    !/\d/.test(t) &&
+    letters === letters.toUpperCase() &&
+    /[A-ZÀ-Þ]/.test(letters)
+  ) {
     return t;
   }
   return null;
+}
+
+// ---- Titre du document ------------------------------------------------------------
+
+const GENERIC_TITLE = /^(cv|c\.v\.?|curriculum vitae|curriculum|r[ée]sum[ée]|resume)$/i;
+
+/**
+ * Titre du document, répété dans l'intertitre de CHAQUE extrait. Sans lui,
+ * seul l'extrait qui contient le nom d'une personne répondait à « Yasmine
+ * El Amrani … » : ses expériences et ses compétences, plus bas dans le CV,
+ * étaient introuvables par son nom.
+ *
+ * La première ligne du document quand elle a l'allure d'un titre (un nom, un
+ * intitulé), sinon le nom du fichier sans extension.
+ */
+export function documentTitle(name: string, pages: PageText[]): string | null {
+  const firstText = pages.map((p) => normalizeText(p.text)).find(Boolean) ?? "";
+  const firstLine = firstText.split("\n").find((l) => l.trim()) ?? "";
+  const line = (firstLine.trim().match(MARKDOWN_HEADING)?.[1] ?? firstLine).trim();
+  const digits = line.replace(/\D/g, "").length;
+  const looksLikeTitle =
+    line.length > 0 &&
+    line.length <= 90 &&
+    !GENERIC_TITLE.test(line) &&
+    !/[.;,:]$/.test(line) &&
+    !/@|https?:|www\./i.test(line) &&
+    digits <= line.length / 4;
+  if (looksLikeTitle) return line;
+  const stem = (name ?? "").replace(/\.[a-z0-9]{2,4}$/i, "").replace(/[-_]+/g, " ").trim();
+  return stem || null;
+}
+
+const fold = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim();
+
+/** « Titre › Section », ou l'un des deux seul quand l'autre manque ou le répète. */
+function label(title: string | null, section: string | null): string | null {
+  if (!title) return section;
+  if (!section || fold(section) === fold(title)) return title;
+  return `${title} › ${section}`;
 }
 
 /** Positions (index de caractère) des intertitres d'un texte normalisé. */
@@ -58,29 +112,45 @@ function headingPositions(text: string): { pos: number; title: string }[] {
 
 // ---- Découpe d'un texte -----------------------------------------------------------
 
-/** Bornes [start, end[ des extraits d'un texte normalisé. */
+/**
+ * Bornes [start, end[ des extraits d'un texte normalisé.
+ *
+ * `breaks` : positions des intertitres. Quand l'un d'eux tombe dans la seconde
+ * moitié de la fenêtre, on coupe JUSTE AVANT et l'extrait suivant commence
+ * exactement sur l'intertitre, sans chevauchement : sinon le début de
+ * l'extrait suivant retombait dans la section précédente, dont il héritait
+ * l'intertitre (le passage sur Hajar était étiqueté « Yasmine El Amrani »).
+ */
 export function splitRanges(
   text: string,
   size = CHUNK_SIZE,
   overlap = CHUNK_OVERLAP,
+  breaks: number[] = [],
 ): { start: number; end: number }[] {
   const ranges: { start: number; end: number }[] = [];
   let start = 0;
   while (start < text.length) {
     let end = Math.min(start + size, text.length);
+    let atHeading = false;
     if (end < text.length) {
-      const window = text.slice(start, end);
-      for (const sep of SEPARATORS) {
-        const at = window.lastIndexOf(sep);
-        if (at > size / 2) {
-          end = start + at + sep.length;
-          break;
+      const brk = breaks.filter((b) => b > start + size / 2 && b < end).at(-1);
+      if (brk !== undefined) {
+        end = brk;
+        atHeading = true;
+      } else {
+        const window = text.slice(start, end);
+        for (const sep of SEPARATORS) {
+          const at = window.lastIndexOf(sep);
+          if (at > size / 2) {
+            end = start + at + sep.length;
+            break;
+          }
         }
       }
     }
     ranges.push({ start, end });
     if (end >= text.length) break;
-    start = Math.max(overlapStart(text, end, overlap), start + 1);
+    start = atHeading ? end : Math.max(overlapStart(text, end, overlap), start + 1);
   }
   return ranges;
 }
@@ -109,8 +179,9 @@ function overlapStart(text: string, end: number, overlap: number): number {
 /**
  * Découpe un document page par page. L'intertitre courant se propage d'une page
  * à l'autre : une section qui déborde sur la page suivante garde son titre.
+ * Avec `title` (voir documentTitle), chaque intertitre devient « Titre › Section ».
  */
-export function chunkPages(pages: PageText[]): Chunk[] {
+export function chunkPages(pages: PageText[], title: string | null = null): Chunk[] {
   const chunks: Chunk[] = [];
   let carried: string | null = null;
 
@@ -118,15 +189,16 @@ export function chunkPages(pages: PageText[]): Chunk[] {
     const text = normalizeText(raw);
     if (!text) continue;
     const headings = headingPositions(text);
+    const breaks = headings.map((h) => h.pos);
 
-    for (const { start, end } of splitRanges(text)) {
+    for (const { start, end } of splitRanges(text, CHUNK_SIZE, CHUNK_OVERLAP, breaks)) {
       const content = text.slice(start, end).trim();
       if (!content) continue;
       // Intertitre en vigueur au début de l'extrait ; à défaut, le premier qu'il contient.
       const before = headings.filter((h) => h.pos <= start).at(-1);
       const inside = headings.find((h) => h.pos > start && h.pos < end);
       const heading = before?.title ?? (inside && !carried ? inside.title : carried);
-      chunks.push({ content, page, heading: heading ?? null });
+      chunks.push({ content, page, heading: label(title, heading ?? null) });
     }
     carried = headings.at(-1)?.title ?? carried;
   }
