@@ -28,7 +28,7 @@ import {
   type ChatMessage,
 } from "../_shared/rag";
 import { createDb, fixturePages, pgliteStore } from "../_shared/rag/__tests__/helpers";
-import { classifyScope, refusalStream, REFUSALS } from "../_shared/scope";
+import { cannedStream, classifyScope, REFUSALS } from "../_shared/scope";
 import { contextNote } from "../_shared/conversations";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -112,7 +112,7 @@ async function runTurn(history: ChatMessage[], question: string, errors: string[
     errors,
     ms: 0,
   };
-  const events = scope.verdict === "in" ? runAgent(fullHistory) : refusalStream(scope.verdict);
+  const events = scope.verdict === "in" ? runAgent(fullHistory) : cannedStream(scope.verdict, question);
   try {
     for await (const ev of events) {
       if (ev.type === "delta") rec.answer += ev.text;

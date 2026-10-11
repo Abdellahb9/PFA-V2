@@ -33,8 +33,11 @@
       "context": "Babtich El Habib a obtenu un score de 81 % sur le stage Développement IA / NLP.",
       "expect": "in"
     },
-    { "q": "Bonjour", "expect": "in" },
-    { "q": "Merci !", "expect": "in" },
+    { "q": "Bonjour", "expect": "small_talk" },
+    { "q": "Que peux-tu faire ?", "expect": "small_talk" },
+    { "q": "Quel est le numéro de CNSS de Hajar Ait Ouarab ?", "expect": "in" },
+    { "q": "Quel salaire Yasmine El Amrani demande-t-elle ?", "expect": "in" },
+    { "q": "Merci !", "expect": "small_talk" },
     { "q": "Peux-tu reformuler plus simplement ?", "expect": "in" },
 
     { "q": "Quelle est la capitale du Maroc ?", "expect": "off_topic" },

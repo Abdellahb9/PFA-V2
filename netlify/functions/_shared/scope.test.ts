@@ -20,13 +20,14 @@ import {
   classifierRequestBody,
   classifyScope,
   isDiscriminatoryRequest,
-  refusalStream,
+  cannedStream,
+  smallTalkReply,
   REFUSALS,
 } from "./scope";
 
 interface EvalCase {
   q: string;
-  expect: "in" | "off_topic" | "discriminatory";
+  expect: "in" | "small_talk" | "off_topic" | "discriminatory";
   context?: string;
   backstop?: boolean;
 }
@@ -44,13 +45,43 @@ beforeEach(() => {
 });
 
 describe("classifyScope — voie rapide", () => {
-  it.each(["Bonjour", "merci !", "Merci beaucoup", "Salut", "ok", "Génial"])(
-    "laisse passer « %s » sans appeler le modèle",
-    async (q) => {
-      expect(await classifyScope(q)).toEqual({ verdict: "in", via: "fast_path" });
-      expect(create).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    "Bonjour",
+    "merci !",
+    "Merci beaucoup",
+    "Salut",
+    "ok",
+    "Génial",
+    "Que peux-tu faire ?",
+    "Qu’est-ce que tu sais faire ?",
+    "what can you do?",
+    "Aide",
+  ])("répond à « %s » sans appeler le modèle", async (q) => {
+    expect(await classifyScope(q)).toEqual({ verdict: "small_talk", via: "fast_path" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("laisse une vraie question passer au classifieur", async () => {
+    create.mockResolvedValue({ choices: [{ message: { content: '{"verdict":"in"}' } }] });
+    expect(await classifyScope("Que peut faire Karim Benali en Rust ?")).toEqual({ verdict: "in", via: "classifier" });
+  });
+});
+
+describe("smallTalkReply", () => {
+  it("salue en présentant ce que l'assistant sait faire — jamais le refus", () => {
+    for (const q of ["Bonjour", "Que peux-tu faire ?"]) {
+      const r = smallTalkReply(q);
+      expect(r).toMatch(/candidat/);
+      expect(r).not.toBe(REFUSALS.off_topic);
+    }
+  });
+
+  it("répond dans la langue de la formule", () => {
+    expect(smallTalkReply("hello")).toMatch(/^Hello!/);
+    expect(smallTalkReply("Merci !")).toBe("Avec plaisir.");
+    expect(smallTalkReply("thanks")).toBe("You're welcome.");
+    expect(smallTalkReply("au revoir")).toBe("Au revoir !");
+  });
 });
 
 describe("classifyScope — filet déterministe", () => {
@@ -143,11 +174,17 @@ describe("classifyScope — fail-open", () => {
   });
 });
 
-describe("refusalStream", () => {
+describe("cannedStream", () => {
   it("émet la phrase fixe puis termine, au format de l'agent", async () => {
     const events = [];
-    for await (const e of refusalStream("off_topic")) events.push(e);
+    for await (const e of cannedStream("off_topic")) events.push(e);
     expect(events).toEqual([{ type: "delta", text: REFUSALS.off_topic }, { type: "done" }]);
+  });
+
+  it("répond à une formule de politesse sans refuser", async () => {
+    const events = [];
+    for await (const e of cannedStream("small_talk", "bonjour")) events.push(e);
+    expect(events).toEqual([{ type: "delta", text: smallTalkReply("bonjour") }, { type: "done" }]);
   });
 });
 

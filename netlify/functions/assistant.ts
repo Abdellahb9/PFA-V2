@@ -7,7 +7,7 @@
 import { admin } from "./_shared/supabase";
 import { requireStaff, requireUser } from "./_shared/auth";
 import { json, fail, noContent, methodNotAllowed, readBody } from "./_shared/http";
-import { classifyScope, refusalStream } from "./_shared/scope";
+import { cannedStream, classifyScope } from "./_shared/scope";
 import { triggerEmbedding } from "./_shared/trigger-analysis";
 import {
   getConversation,
@@ -97,7 +97,7 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
   const lastAssistant = [...history].reverse().find((m) => m.role === "assistant")?.content;
   const scope = await classifyScope(message, lastAssistant);
   ragDebug("scope", { message, ...scope });
-  if (scope.verdict !== "in") {
+  if (scope.verdict === "off_topic" || scope.verdict === "discriminatory") {
     console.info(`assistant: question refusée (${scope.verdict}, via ${scope.via})`);
   }
 
@@ -119,7 +119,7 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
       let sources: unknown[] = [];
       try {
         const events =
-          scope.verdict === "in" ? runAgent(history, req.signal) : refusalStream(scope.verdict);
+          scope.verdict === "in" ? runAgent(history, req.signal) : cannedStream(scope.verdict, message);
         for await (const event of events) {
           if (event.type === "delta") answer += event.text;
           else if (event.type === "tool") tools.push(event.name);
