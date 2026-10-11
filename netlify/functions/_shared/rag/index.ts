@@ -16,7 +16,7 @@ export {
   type RagStore,
   type SearchParams,
 } from "./store";
-export { dedupeAdjacent, relevance, retrieveDocChunks } from "./retrieval";
+export { mergeAdjacent, relevance, retrieveDocChunks } from "./retrieval";
 export { candidateEmptyAnswer, getScoreBreakdown, retrieveCandidates } from "./candidates";
 export {
   embedPending,

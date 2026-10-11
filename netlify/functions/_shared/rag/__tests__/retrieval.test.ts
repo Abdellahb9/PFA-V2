@@ -1,9 +1,9 @@
 // Recherche documentaire : ce qui part vers le stockage et ce qui en revient.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MIN_COSINE, MIN_FTS_RANK, POOL_FACTOR, RRF_K } from "../config";
-import { dedupeAdjacent, relevance, retrieveDocChunks } from "../retrieval";
+import { MIN_COSINE, MIN_FTS_RANK, RRF_K } from "../config";
+import { mergeAdjacent, relevance, retrieveDocChunks } from "../retrieval";
 import { setStore, type RagStore } from "../store";
-import type { SearchRow } from "../types";
+import type { ChunkSource, SearchRow } from "../types";
 
 const { embedQuery } = vi.hoisted(() => ({ embedQuery: vi.fn() }));
 vi.mock("../embeddings", () => ({ embedQuery }));
@@ -21,6 +21,18 @@ const row = (doc: string, index: number, fts: number, cosine: number | null = nu
   score: 1 / (60 + index),
 });
 
+/** La forme publiée à l'agent et à l'interface (pertinence = rang plein-texte ici). */
+const source = (r: SearchRow): ChunkSource => ({
+  type: "doc_chunk",
+  source_document: r.source_document,
+  chunk_index: r.chunk_index,
+  text: r.content,
+  similarity: r.fts_rank,
+  doc_type: r.doc_type,
+  page: r.page,
+  heading: r.heading,
+});
+
 const searchChunks = vi.fn<RagStore["searchChunks"]>();
 let previous: RagStore;
 
@@ -34,14 +46,14 @@ afterEach(() => {
 });
 
 describe("retrieveDocChunks", () => {
-  it("demande un vivier élargi et passe les planchers à la RPC", async () => {
+  it("demande top_k extraits et passe les planchers à la RPC", async () => {
     embedQuery.mockResolvedValue([0.1, 0.2]);
     searchChunks.mockResolvedValue([]);
     await retrieveDocChunks("durée du stage", 4, "other");
     expect(searchChunks).toHaveBeenCalledWith({
       query: "durée du stage",
       embedding: [0.1, 0.2],
-      matchCount: 4 * POOL_FACTOR,
+      matchCount: 4,
       docType: "other",
       minFts: MIN_FTS_RANK,
       minCosine: MIN_COSINE,
@@ -57,19 +69,36 @@ describe("retrieveDocChunks", () => {
     expect(out).toHaveLength(1);
   });
 
-  it("déduplique AVANT de couper à top_k : 5 demandés, 5 rendus", async () => {
+  it("fusionne les extraits voisins au lieu d'en jeter un", async () => {
     embedQuery.mockResolvedValue(null);
-    // 0 et 1 sont voisins, 3 et 4 aussi : sans vivier, on n'en rendrait que 3.
-    searchChunks.mockResolvedValue(
-      [0, 1, 3, 4, 6, 8, 10, 12].map((i) => row("a.pdf", i, 0.5 - i / 100)),
-    );
+    // 0 et 1 sont voisins, 3 et 4 aussi. Autrefois 1 et 4 étaient jetés : ils
+    // portaient pourtant la suite du texte.
+    searchChunks.mockResolvedValue([0, 1, 3, 4, 6].map((i) => row("a.pdf", i, 0.5 - i / 100)));
     const out = await retrieveDocChunks("stage", 5);
-    expect(out.map((c) => c.chunk_index)).toEqual([0, 3, 6, 8, 10]);
+    expect(out.map((c) => c.chunk_index)).toEqual([0, 3, 6]);
+    expect(out[0].text).toBe("Texte 0\nTexte 1");
+    expect(out[1].text).toBe("Texte 3\nTexte 4");
   });
 
   it("garde le même index s'il vient d'un autre document", () => {
-    const out = dedupeAdjacent([row("a.pdf", 2, 0.4), row("b.pdf", 2, 0.3)]);
+    const out = mergeAdjacent([row("a.pdf", 2, 0.4), row("b.pdf", 2, 0.3)].map(source));
     expect(out).toHaveLength(2);
+  });
+
+  it("recolle deux extraits sans répéter leur chevauchement", () => {
+    // Fin de l'extrait 4 = début de l'extrait 5 : c'est le chevauchement du découpeur.
+    const a = { ...source(row("cv.pdf", 4, 0.3)), text: "LafargeHolcim Maroc. Inventaire des pièces de rechange." };
+    const b = { ...source(row("cv.pdf", 5, 0.6)), text: "Inventaire des pièces de rechange. Port d'Agadir, Marsa Maroc." };
+    // L'extrait 5 est mieux classé : le passage garde sa place, mais commence à l'extrait 4.
+    const [m] = mergeAdjacent([b, a]);
+    expect(m).toMatchObject({ chunk_index: 4, page: 5, similarity: 0.6 });
+    expect(m.text).toBe("LafargeHolcim Maroc. Inventaire des pièces de rechange. Port d'Agadir, Marsa Maroc.");
+  });
+
+  it("réunit deux passages quand un extrait les relie", () => {
+    const out = mergeAdjacent([5, 7, 6].map((i) => source(row("a.pdf", i, 0.5))));
+    expect(out).toHaveLength(1);
+    expect(out[0].text).toBe("Texte 5\nTexte 6\nTexte 7");
   });
 
   it("publie page, intertitre, type et une pertinence ABSOLUE", async () => {
@@ -97,7 +126,7 @@ describe("retrieveDocChunks", () => {
     embedQuery.mockResolvedValue(null);
     searchChunks.mockResolvedValue([]);
     await retrieveDocChunks("x", 500);
-    expect(searchChunks.mock.calls[0][0].matchCount).toBe(20 * POOL_FACTOR);
+    expect(searchChunks.mock.calls[0][0].matchCount).toBe(20);
   });
 });
 

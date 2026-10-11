@@ -33,8 +33,6 @@ export const QUERY_EMBED_TIMEOUT_MS = 4_000;
 
 export const DEFAULT_TOP_K = 5;
 export const MAX_TOP_K = 20;
-/** Taille du vivier demandé à la RPC, avant déduplication et coupe à top_k. */
-export const POOL_FACTOR = 3;
 /** Constante de Reciprocal Rank Fusion (valeur usuelle). */
 export const RRF_K = 60;
 

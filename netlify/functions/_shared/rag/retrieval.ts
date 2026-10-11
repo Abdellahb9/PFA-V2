@@ -2,18 +2,15 @@
 //
 // Ordre des opérations, et pourquoi :
 //   1. vecteur de la question (null sans clé ou sur panne → plein-texte seul) ;
-//   2. RPC rag_search_chunks sur un VIVIER de top_k × POOL_FACTOR extraits ;
-//   3. déduplication des extraits voisins — AVANT la coupe : dédupliquer après
-//      le LIMIT rendait 3 extraits pour 5 demandés ;
-//   4. coupe à top_k.
-import {
-  DEFAULT_TOP_K,
-  MAX_TOP_K,
-  MIN_COSINE,
-  MIN_FTS_RANK,
-  POOL_FACTOR,
-  RRF_K,
-} from "./config";
+//   2. RPC rag_search_chunks : les top_k extraits les mieux classés ;
+//   3. FUSION des extraits voisins d'un même document en un seul passage.
+//      Autrefois le voisin était jeté comme « doublon » — or deux extraits
+//      voisins ne partagent que le chevauchement (≤ CHUNK_OVERLAP) : le voisin
+//      jeté emportait ~85 % de texte neuf, souvent la suite de la réponse.
+//
+// top_k compte des EXTRAITS, pas des passages : le volume de texte remis au
+// modèle reste celui pour lequel MAX_TOOL_RESULT_CHARS est dimensionné.
+import { CHUNK_OVERLAP, DEFAULT_TOP_K, MAX_TOP_K, MIN_COSINE, MIN_FTS_RANK, RRF_K } from "./config";
 import { clip, ragDebug } from "./debug";
 import { embedQuery } from "./embeddings";
 import { getStore } from "./store";
@@ -32,22 +29,47 @@ export function relevance(ftsRank: number, cosine: number | null): number {
   return round4(Math.min(1, Math.max(ftsRank, vec)));
 }
 
-/**
- * Deux extraits voisins d'un même document se chevauchent : les garder tous les
- * deux consomme des places de contexte pour répéter le même passage. On
- * conserve le premier rencontré, c'est-à-dire le mieux classé.
- */
-export function dedupeAdjacent<T extends { source_document: string; chunk_index: number }>(
-  items: T[],
-): T[] {
-  const kept: T[] = [];
-  for (const c of items) {
-    const redundant = kept.some(
-      (k) => k.source_document === c.source_document && Math.abs(k.chunk_index - c.chunk_index) <= 1,
-    );
-    if (!redundant) kept.push(c);
+/** Recolle deux extraits consécutifs en retirant le chevauchement qu'ils partagent. */
+function joinOverlap(a: string, b: string): string {
+  for (let k = Math.min(a.length, b.length, CHUNK_OVERLAP + 50); k > 0; k--) {
+    if (a.endsWith(b.slice(0, k))) return a + b.slice(k);
   }
-  return kept;
+  return `${a}\n${b}`;
+}
+
+/**
+ * Fusionne les extraits voisins d'un même document (index consécutifs) en un
+ * passage continu. Les passages restent dans l'ordre de leur meilleur extrait ;
+ * chacun prend la page, l'intertitre et l'index de son PREMIER extrait dans le
+ * document, et la meilleure pertinence du groupe.
+ */
+export function mergeAdjacent(items: ChunkSource[]): ChunkSource[] {
+  const groups: ChunkSource[][] = [];
+  for (const c of items) {
+    const near = groups.filter(
+      (g) => g[0].source_document === c.source_document && g.some((p) => Math.abs(p.chunk_index - c.chunk_index) <= 1),
+    );
+    if (near.some((g) => g.some((p) => p.chunk_index === c.chunk_index))) continue; // même extrait, déjà là
+    if (!near.length) {
+      groups.push([c]);
+      continue;
+    }
+    // L'extrait peut relier deux groupes (5 puis 7, puis 6) : on les réunit.
+    const [first, ...rest] = near;
+    first.push(c);
+    for (const g of rest) {
+      first.push(...g);
+      groups.splice(groups.indexOf(g), 1);
+    }
+  }
+  return groups.map((g) => {
+    const parts = [...g].sort((x, y) => x.chunk_index - y.chunk_index);
+    return {
+      ...parts[0],
+      text: parts.slice(1).reduce((acc, p) => joinOverlap(acc, p.text), parts[0].text),
+      similarity: Math.max(...parts.map((p) => p.similarity)),
+    };
+  });
 }
 
 function toSource(r: SearchRow): ChunkSource {
@@ -76,7 +98,7 @@ export async function retrieveDocChunks(
   const rows = await getStore().searchChunks({
     query: q,
     embedding,
-    matchCount: k * POOL_FACTOR,
+    matchCount: k,
     docType,
     minFts: MIN_FTS_RANK,
     minCosine: MIN_COSINE,
@@ -84,12 +106,12 @@ export async function retrieveDocChunks(
   });
 
   // La RPC trie déjà par score RRF ; on ne réordonne pas.
-  const out = dedupeAdjacent(rows.map(toSource)).slice(0, k);
+  const out = mergeAdjacent(rows.map(toSource));
   ragDebug("retrieval", {
     query: q,
     doc_type: docType,
     vector: embedding != null,
-    pool: rows.map((r) => ({
+    rows: rows.map((r) => ({
       doc: r.source_document,
       chunk: r.chunk_index,
       page: r.page,
