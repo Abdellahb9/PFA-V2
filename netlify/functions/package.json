@@ -7,7 +7,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "eval:scope": "tsx scripts/eval-scope.ts",
-    "rag:demo": "tsx scripts/rag-demo.ts"
+    "rag:demo": "tsx scripts/rag-demo.ts",
+    "eval:rag": "tsx --env-file-if-exists=../../.env scripts/eval-rag.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",

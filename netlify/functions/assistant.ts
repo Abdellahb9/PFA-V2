@@ -25,6 +25,7 @@ import {
   ingestDocument,
   isDocType,
   MAX_UPLOAD_BYTES,
+  ragDebug,
   runAgent,
   sanitizeHistory,
 } from "./_shared/rag";
@@ -95,6 +96,7 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
   // demande de classement discriminatoire, n'atteint jamais le modèle principal.
   const lastAssistant = [...history].reverse().find((m) => m.role === "assistant")?.content;
   const scope = await classifyScope(message, lastAssistant);
+  ragDebug("scope", { message, ...scope });
   if (scope.verdict !== "in") {
     console.info(`assistant: question refusée (${scope.verdict}, via ${scope.via})`);
   }

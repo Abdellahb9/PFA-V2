@@ -14,6 +14,7 @@ import {
   MAX_TOOL_RESULT_CHARS,
 } from "./config";
 import { toolResultContent } from "./context";
+import { clip, ragDebug, ragDebugEnabled } from "./debug";
 import { FINAL_ROUND_INSTRUCTION, SYSTEM, TOOLS } from "./prompt";
 import { runTool, type ToolArgs } from "./tools";
 
@@ -119,6 +120,22 @@ export async function* runAgent(
       ? messages
       : [...messages, { role: "system", content: FINAL_ROUND_INSTRUCTION }];
 
+    if (ragDebugEnabled()) {
+      ragDebug(`prompt round ${round}`, {
+        tools: useTools,
+        messages: turn.map((m) => ({
+          role: m.role,
+          content: clip(
+            typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? ""),
+            m.role === "system" ? 120 : 1500,
+          ),
+          ...("tool_calls" in m && m.tool_calls
+            ? { tool_calls: m.tool_calls.map((c) => `${c.function.name}(${c.function.arguments})`) }
+            : {}),
+        })),
+      });
+    }
+
     let stream;
     try {
       stream = await client.chat.completions.create(
@@ -134,6 +151,7 @@ export async function* runAgent(
     } catch (err) {
       if (signal?.aborted) return;
       console.error("[rag] agent round failed:", err);
+      ragDebug("fallback", { round, cause: "llm call failed", error: String(err) });
       yield { type: "delta", text: FALLBACK_ANSWER };
       yield { type: "done" };
       return;
@@ -160,8 +178,16 @@ export async function* runAgent(
 
     // Un appel sans id ne peut pas recevoir de réponse : Groq rejetterait le tour suivant.
     const toolCalls = calls.filter((c) => c && c.name && c.id);
+    ragDebug(`answer round ${round}`, {
+      content: clip(content, 600),
+      tool_calls: toolCalls.map((c) => `${c.name}(${c.args})`),
+      dropped_calls: calls.filter((c) => c && !(c.name && c.id)).length,
+    });
     if (!toolCalls.length) {
-      if (!content.trim()) yield { type: "delta", text: FALLBACK_ANSWER };
+      if (!content.trim()) {
+        ragDebug("fallback", { round, cause: "empty answer without tool call" });
+        yield { type: "delta", text: FALLBACK_ANSWER };
+      }
       const unverified = unverifiedCitations(content, sources);
       if (unverified.length) {
         console.warn("[rag] answer cites documents absent from the sources:", unverified);
@@ -226,6 +252,7 @@ export async function* runAgent(
   }
 
   // Tours épuisés alors que le modèle appelait encore des outils.
+  ragDebug("fallback", { cause: "tool rounds exhausted" });
   yield { type: "delta", text: FALLBACK_ANSWER };
   if (sources.length) yield { type: "sources", sources };
   yield { type: "done" };

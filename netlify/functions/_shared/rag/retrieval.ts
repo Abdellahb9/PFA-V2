@@ -14,6 +14,7 @@ import {
   POOL_FACTOR,
   RRF_K,
 } from "./config";
+import { clip, ragDebug } from "./debug";
 import { embedQuery } from "./embeddings";
 import { getStore } from "./store";
 import type { ChunkSource, DocType, SearchRow } from "./types";
@@ -83,5 +84,22 @@ export async function retrieveDocChunks(
   });
 
   // La RPC trie déjà par score RRF ; on ne réordonne pas.
-  return dedupeAdjacent(rows.map(toSource)).slice(0, k);
+  const out = dedupeAdjacent(rows.map(toSource)).slice(0, k);
+  ragDebug("retrieval", {
+    query: q,
+    doc_type: docType,
+    vector: embedding != null,
+    pool: rows.map((r) => ({
+      doc: r.source_document,
+      chunk: r.chunk_index,
+      page: r.page,
+      heading: r.heading,
+      fts: round4(r.fts_rank),
+      cos: r.cosine == null ? null : round4(r.cosine),
+      rrf: round4(r.score),
+      text: clip(r.content, 120),
+    })),
+    kept: out.map((c) => `${c.source_document}#${c.chunk_index}`),
+  });
+  return out;
 }
