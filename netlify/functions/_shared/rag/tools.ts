@@ -97,15 +97,22 @@ async function rankCandidatesTool(args: ToolArgs): Promise<ToolResult> {
 }
 
 async function searchDocumentsTool(args: ToolArgs): Promise<ToolResult> {
-  const chunks = await retrieveDocChunks(
-    String(args.query ?? ""),
-    clampInt(args.top_k, 1, 20, 5),
-    isDocType(args.doc_type) ? args.doc_type : null,
-  );
+  const query = String(args.query ?? "");
+  const topK = clampInt(args.top_k, 1, 20, 5);
+  const docType = isDocType(args.doc_type) ? args.doc_type : null;
+  let chunks = await retrieveDocChunks(query, topK, docType);
+  // Le type est choisi par le MODÈLE : un mauvais choix (« other » pour un
+  // CV, un compte rendu déposé comme CV) vidait la recherche, et l'outil
+  // répondait « ne relance pas » — d'où un faux « aucun document ».
+  const widened = !chunks.length && docType != null;
+  if (widened) chunks = await retrieveDocChunks(query, topK, null);
   if (chunks.length) {
     // Texte déposé par un tiers : étiqueté pour être traité en donnée, pas en consigne.
     return {
-      payload: { extraits: chunks.map((c) => ({ ...c, contenu_non_fiable: true })) },
+      payload: {
+        extraits: chunks.map((c) => ({ ...c, contenu_non_fiable: true })),
+        ...(widened ? { filtre_doc_type_ignore: true } : {}),
+      },
       sources: chunks,
     };
   }

@@ -88,6 +88,7 @@ describe("search_documents", () => {
   });
 
   it("ne transmet qu'un doc_type valide", async () => {
+    retrieveDocChunks.mockResolvedValue([chunk]); // un résultat : pas de relance sans filtre
     await runTool("search_documents", { query: "durée", doc_type: "cv" });
     expect(retrieveDocChunks).toHaveBeenLastCalledWith("durée", 5, "cv");
     await runTool("search_documents", { query: "durée", doc_type: "DROP TABLE" });
@@ -95,6 +96,23 @@ describe("search_documents", () => {
     // La politique de stage est sortie du produit : le type n'existe plus.
     await runTool("search_documents", { query: "durée", doc_type: "policy" });
     expect(retrieveDocChunks).toHaveBeenLastCalledWith("durée", 5, null);
+  });
+
+  it("relance sans filtre de type quand le type choisi ne donne rien", async () => {
+    // Un compte rendu de jury cherché avec doc_type « cv » : vide, puis trouvé.
+    retrieveDocChunks.mockResolvedValueOnce([]).mockResolvedValueOnce([chunk]);
+    const { payload, sources } = await runTool("search_documents", { query: "avis du jury", doc_type: "cv" });
+    expect(retrieveDocChunks).toHaveBeenNthCalledWith(1, "avis du jury", 5, "cv");
+    expect(retrieveDocChunks).toHaveBeenNthCalledWith(2, "avis du jury", 5, null);
+    expect(payload).toMatchObject({ filtre_doc_type_ignore: true });
+    expect(sources).toEqual([chunk]);
+  });
+
+  it("ne relance pas une recherche déjà sans filtre", async () => {
+    retrieveDocChunks.mockResolvedValue([]);
+    countChunks.mockResolvedValue(3);
+    await runTool("search_documents", { query: "introuvable" });
+    expect(retrieveDocChunks).toHaveBeenCalledTimes(1);
   });
 
   it("distingue une base vide d'une recherche sans résultat", async () => {
