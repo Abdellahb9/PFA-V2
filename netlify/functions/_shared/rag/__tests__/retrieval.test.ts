@@ -8,12 +8,12 @@ import type { ChunkSource, SearchRow } from "../types";
 const { embedQuery } = vi.hoisted(() => ({ embedQuery: vi.fn() }));
 vi.mock("../embeddings", () => ({ embedQuery }));
 
-const row = (doc: string, index: number, fts: number, cosine: number | null = null): SearchRow => ({
+const row = (doc: string, index: number, fts: number, cosine: number | null = null, page = 1): SearchRow => ({
   chunk_id: index,
   source_document: doc,
   doc_type: "other",
   chunk_index: index,
-  page: index + 1,
+  page,
   heading: `Article ${index}`,
   content: `Texte ${index}`,
   fts_rank: fts,
@@ -91,8 +91,16 @@ describe("retrieveDocChunks", () => {
     const b = { ...source(row("cv.pdf", 5, 0.6)), text: "Inventaire des pièces de rechange. Port d'Agadir, Marsa Maroc." };
     // L'extrait 5 est mieux classé : le passage garde sa place, mais commence à l'extrait 4.
     const [m] = mergeAdjacent([b, a]);
-    expect(m).toMatchObject({ chunk_index: 4, page: 5, similarity: 0.6 });
+    expect(m).toMatchObject({ chunk_index: 4, page: 1, similarity: 0.6 });
     expect(m.text).toBe("LafargeHolcim Maroc. Inventaire des pièces de rechange. Port d'Agadir, Marsa Maroc.");
+  });
+
+  it("ne fusionne pas deux pages : la citation garde la bonne page", () => {
+    const out = mergeAdjacent([row("cv.pdf", 3, 0.5, null, 1), row("cv.pdf", 4, 0.4, null, 2)].map(source));
+    expect(out.map((c) => [c.chunk_index, c.page])).toEqual([
+      [3, 1],
+      [4, 2],
+    ]);
   });
 
   it("réunit deux passages quand un extrait les relie", () => {
@@ -112,7 +120,7 @@ describe("retrieveDocChunks", () => {
       text: "Texte 1",
       similarity: 0.12, // pas 1.0 : jamais normalisée sur le meilleur résultat
       doc_type: "other",
-      page: 2,
+      page: 1,
       heading: "Article 1",
     });
   });

@@ -46,8 +46,13 @@ function joinOverlap(a: string, b: string): string {
 export function mergeAdjacent(items: ChunkSource[]): ChunkSource[] {
   const groups: ChunkSource[][] = [];
   for (const c of items) {
+    // Même page seulement : la citation « (doc, p. N) » doit rester exacte, et
+    // deux extraits de pages différentes ne se chevauchent pas (découpe par page).
     const near = groups.filter(
-      (g) => g[0].source_document === c.source_document && g.some((p) => Math.abs(p.chunk_index - c.chunk_index) <= 1),
+      (g) =>
+        g[0].source_document === c.source_document &&
+        g[0].page === c.page &&
+        g.some((p) => Math.abs(p.chunk_index - c.chunk_index) <= 1),
     );
     if (near.some((g) => g.some((p) => p.chunk_index === c.chunk_index))) continue; // même extrait, déjà là
     if (!near.length) {
