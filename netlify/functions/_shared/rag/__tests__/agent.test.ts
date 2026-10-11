@@ -209,6 +209,28 @@ describe("unverifiedCitations", () => {
   it("ne relève rien sans nom de fichier", () => {
     expect(unverifiedCitations("Six mois au maximum.", [])).toEqual([]);
   });
+
+  it("accepte la citation entre parenthèses, la forme la plus courante", () => {
+    const sources = [doc("cv-yasmine-el-amrani.pdf")];
+    expect(unverifiedCitations("Arena et FlexSim (cv-yasmine-el-amrani.pdf, p. 2).", sources)).toEqual([]);
+  });
+
+  it("lit les traits d'union insécables écrits par le modèle (U+2011)", () => {
+    // Réponse réelle de production (message 127), avec le document dans les sources.
+    const answer = "Computer Science Engineering (d’après babtich‑el‑habib‑cv.pdf, p. 1).";
+    expect(unverifiedCitations(answer, [doc("babtich-el-habib-cv.pdf")])).toEqual([]);
+    // Et un nom inventé reste relevé EN ENTIER, pas seulement « cv.pdf ».
+    expect(unverifiedCitations("(d’après jean‑dupont‑cv.pdf)", [doc("autre.pdf")])).toEqual([
+      "jean-dupont-cv.pdf",
+    ]);
+  });
+
+  it("accepte un document trouvé à un tour précédent de la conversation", () => {
+    const answer = "Universiapolis (babtich‑el‑habib‑cv.pdf, p. 1).";
+    const prior = "Computer Science Engineering.\n\n[contexte : documents — babtich-el-habib-cv.pdf p.1]";
+    expect(unverifiedCitations(answer, [])).toEqual(["babtich-el-habib-cv.pdf"]);
+    expect(unverifiedCitations(answer, [], prior)).toEqual([]);
+  });
 });
 
 describe("sanitizeHistory", () => {

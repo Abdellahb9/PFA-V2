@@ -54,26 +54,48 @@ export function sanitizeHistory(raw: unknown): ChatMessage[] {
 // ---- Vérification des citations ----------------------------------------------------
 
 // Sans espace : « d'après cv-dupont.pdf » isole « cv-dupont.pdf ». Un nom qui
-// contient des espaces est rapproché par sa fin (voir plus bas).
-const FILE_NAME = /[\p{L}\p{N}_()-][\p{L}\p{N}_().-]*\.(?:pdf|docx|txt|md)\b/giu;
+// contient des espaces est rapproché par sa fin (voir plus bas). Un nom ne
+// COMMENCE jamais par une parenthèse : « (cv-dupont.pdf, p. 2) » est la forme
+// de citation la plus courante, et la parenthèse capturée faisait signaler à
+// tort chaque citation de ce type.
+const FILE_NAME = /[\p{L}\p{N}_-][\p{L}\p{N}_().-]*\.(?:pdf|docx|txt|md)\b/giu;
+
+/**
+ * Le modèle écrit souvent les traits d'union en U+2011 (insécable) et les
+ * espaces en U+00A0 / U+202F : « babtich‑el‑habib‑cv.pdf » ne se reconnaissait
+ * qu'à moitié (« cv.pdf »).
+ */
+function normalizeName(text: string): string {
+  return text
+    .replace(/[‐-―−]/g, "-")
+    .replace(/[  ]/g, " ")
+    .toLowerCase();
+}
 
 /**
  * Documents nommés dans la réponse mais absents des extraits consultés. La
  * consigne « ne cite que des documents présents » reste une consigne : ce
  * contrôle la rend vérifiable.
+ *
+ * `priorText` : les tours précédents de l'assistant (avec leurs notes
+ * [contexte : …]). Un document trouvé à un tour antérieur n'est pas inventé ;
+ * sans cela, chaque relance (« et son université ? ») recevait un faux
+ * avertissement, enregistré ensuite dans l'historique.
  */
-export function unverifiedCitations(answer: string, sources: unknown[]): string[] {
+export function unverifiedCitations(answer: string, sources: unknown[], priorText = ""): string[] {
   const known = new Set(
     sources
       .map((s) => (s as { source_document?: unknown }).source_document)
       .filter((n): n is string => typeof n === "string")
-      .map((n) => n.toLowerCase()),
+      .map(normalizeName),
   );
-  const cited = [...new Set((answer.match(FILE_NAME) ?? []).map((n) => n.trim()))];
-  return cited.filter((name) => {
-    const lower = name.toLowerCase();
-    return ![...known].some((k) => k === lower || k.endsWith(` ${lower}`) || k.endsWith(lower));
-  });
+  const prior = normalizeName(priorText);
+  const cited = [...new Set((normalizeName(answer).match(FILE_NAME) ?? []).map((n) => n.trim()))];
+  return cited.filter(
+    (name) =>
+      !prior.includes(name) &&
+      ![...known].some((k) => k === name || k.endsWith(` ${name}`) || k.endsWith(name)),
+  );
 }
 
 // ---- Boucle d'agent ---------------------------------------------------------------------
@@ -101,6 +123,11 @@ export async function* runAgent(
 
   const client = groqClient();
   const messages: Message[] = [{ role: "system", content: SYSTEM }, ...history];
+  // Documents déjà cités aux tours précédents (réponses + notes [contexte : …]).
+  const priorAnswers = history
+    .filter((m) => m.role === "assistant")
+    .map((m) => m.content)
+    .join("\n");
   const sources: unknown[] = [];
   const seen = new Set<string>();
   const addSources = (list: unknown[]) => {
@@ -188,7 +215,7 @@ export async function* runAgent(
         ragDebug("fallback", { round, cause: "empty answer without tool call" });
         yield { type: "delta", text: FALLBACK_ANSWER };
       }
-      const unverified = unverifiedCitations(content, sources);
+      const unverified = unverifiedCitations(content, sources, priorAnswers);
       if (unverified.length) {
         console.warn("[rag] answer cites documents absent from the sources:", unverified);
         yield {

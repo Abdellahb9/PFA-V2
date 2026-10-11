@@ -118,7 +118,7 @@ describe("RAG de bout en bout", () => {
       expect(extraits.every((e) => e.contenu_non_fiable)).toBe(true);
       const best = extraits.find((e) => /FlexSim/.test(e.text));
       const answer = best
-        ? `D'après ${best.source_document} (p. ${best.page}), Arena et FlexSim.`
+        ? `Arena et FlexSim (${best.source_document}, p. ${best.page}).`
         : "Introuvable.";
       return (async function* () {
         yield { choices: [{ delta: { content: answer } }] };
@@ -136,7 +136,7 @@ describe("RAG de bout en bout", () => {
       .filter((e): e is { type: "delta"; text: string } => e.type === "delta")
       .map((e) => e.text)
       .join("");
-    expect(answer).toBe(`D'après ${DOC} (p. 2), Arena et FlexSim.`);
+    expect(answer).toBe(`Arena et FlexSim (${DOC}, p. 2).`);
     expect(answer).not.toMatch(/Attention/); // la citation est vérifiée
 
     expect(events.find((e) => e.type === "tool")).toEqual({
