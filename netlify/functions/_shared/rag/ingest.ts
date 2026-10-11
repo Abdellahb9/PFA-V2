@@ -32,7 +32,7 @@ export class EmptyDocumentError extends Error {
 export function guessDocType(title: string, filename: string): DocType {
   return /(^|[^a-z])cv([^a-z]|$)|resume|résumé|curriculum/i.test(`${title} ${filename}`)
     ? "cv"
-    : "policy";
+    : "other";
 }
 
 /** Écrit des pages déjà extraites. Exposé pour les tests et la démonstration. */

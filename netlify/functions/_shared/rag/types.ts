@@ -2,9 +2,9 @@
 // (frontend/src/api/types.ts) : elles arrivent telles quelles dans l'événement
 // SSE `sources` et dans assistant_messages.sources.
 
-/** Nature d'un document : la doctrine, un CV, ou le reste. */
-export type DocType = "policy" | "cv" | "other";
-export const DOC_TYPES: readonly DocType[] = ["policy", "cv", "other"];
+/** Nature d'un document : un CV, ou le reste (compte rendu, fiche…). */
+export type DocType = "cv" | "other";
+export const DOC_TYPES: readonly DocType[] = ["cv", "other"];
 
 export function isDocType(value: unknown): value is DocType {
   return typeof value === "string" && (DOC_TYPES as readonly string[]).includes(value);

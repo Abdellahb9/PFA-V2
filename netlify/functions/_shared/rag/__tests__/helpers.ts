@@ -71,6 +71,7 @@ const CONCEPTS: Record<string, string[]> = {
   insurance: ["assurance", "accident", "couverture", "responsabilite"],
   leave: ["conge", "conges", "absence", "absences", "jours"],
   hours: ["horaire", "horaires", "heures", "temps de travail"],
+  languages: ["langues", "langue", "idiomes", "languages"],
 };
 
 const fold = (s: string) =>

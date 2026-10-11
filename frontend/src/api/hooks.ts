@@ -395,7 +395,7 @@ export const useKnowledgeDocuments = () =>
     queryFn: async () => (await api.get<KnowledgeDocument[]>("/assistant/documents")).data,
   });
 
-// Upload a policy/process document; ingestion (chunk + embed) runs async in Celery.
+// Upload a CV or a document about candidates; chunks are stored synchronously, embeddings run in the background.
 export const useIngestKnowledgeDocument = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -410,8 +410,8 @@ export const useIngestKnowledgeDocument = () => {
       file: File;
       title?: string;
       replace?: boolean;
-      /** policy = règlement, cv = un CV. Déduit du nom de fichier si omis. */
-      docType?: "policy" | "cv" | "other";
+      /** cv = un CV, other = tout autre document. Déduit du nom de fichier si omis. */
+      docType?: "cv" | "other";
     }) => {
       const form = new FormData();
       form.append("file", file);

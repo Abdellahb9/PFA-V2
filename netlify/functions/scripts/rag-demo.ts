@@ -3,7 +3,7 @@
 //
 //   cd netlify/functions
 //   SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… MISTRAL_API_KEY=… GROQ_API_KEY=… \
-//     npm run rag:demo -- "Quelle est la durée maximale d'un stage ?"
+//     npm run rag:demo -- "Quels logiciels de simulation Yasmine El Amrani maîtrise-t-elle ?"
 //
 // Prérequis : migration 0019 appliquée. Le document de démonstration est
 // supprimé à la fin, sauf avec --keep. La version hors ligne de ce scénario
@@ -21,8 +21,8 @@ import {
 } from "../_shared/rag";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const FIXTURE = join(HERE, "..", "_shared", "rag", "__fixtures__", "politique-stage.md");
-const DOC_NAME = "demo-politique-stage.md";
+const FIXTURE = join(HERE, "..", "_shared", "rag", "__fixtures__", "cv-yasmine-el-amrani.md");
+const DOC_NAME = "demo-cv-yasmine-el-amrani.pdf";
 
 async function main() {
   const missing = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "GROQ_API_KEY"].filter(
@@ -35,13 +35,13 @@ async function main() {
   const keep = process.argv.includes("--keep");
   const question =
     process.argv.slice(2).find((a) => !a.startsWith("--")) ??
-    "Quelle est la durée maximale d'un stage ?";
+    "Quels logiciels de simulation Yasmine El Amrani maîtrise-t-elle ?";
 
   // 1. Ingestion — une ligne « <!-- page --> » simule les pages d'un PDF.
   const pages = readFileSync(FIXTURE, "utf8")
     .split(/^<!-- page -->$/m)
     .map((text, i) => ({ page: i + 1, text }));
-  const ingested = await ingestPages(DOC_NAME, pages, "policy", true);
+  const ingested = await ingestPages(DOC_NAME, pages, "cv", true);
   console.log(`1. ingéré : ${ingested.chunks} extraits (vectorisation : ${ingested.embeddings})`);
 
   // 2. Vectorisation — en production, c'est rag-embed-background qui s'en charge.

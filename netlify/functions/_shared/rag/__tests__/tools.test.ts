@@ -88,9 +88,12 @@ describe("search_documents", () => {
   });
 
   it("ne transmet qu'un doc_type valide", async () => {
-    await runTool("search_documents", { query: "durée", doc_type: "policy" });
-    expect(retrieveDocChunks).toHaveBeenLastCalledWith("durée", 5, "policy");
+    await runTool("search_documents", { query: "durée", doc_type: "cv" });
+    expect(retrieveDocChunks).toHaveBeenLastCalledWith("durée", 5, "cv");
     await runTool("search_documents", { query: "durée", doc_type: "DROP TABLE" });
+    expect(retrieveDocChunks).toHaveBeenLastCalledWith("durée", 5, null);
+    // La politique de stage est sortie du produit : le type n'existe plus.
+    await runTool("search_documents", { query: "durée", doc_type: "policy" });
     expect(retrieveDocChunks).toHaveBeenLastCalledWith("durée", 5, null);
   });
 

@@ -52,9 +52,8 @@ import type {
 const { Text, Paragraph } = Typography;
 
 
-/** La base mélangeait doctrine et CV : on montre désormais ce qu'on indexe. */
+/** Type de chaque document indexé, affiché dans la liste. */
 const DOC_TYPE_LABEL: Record<string, string> = {
-  policy: "politique",
   cv: "CV",
   other: "autre",
 };
@@ -479,7 +478,7 @@ export default function AssistantPage() {
 
       {/* ---- Knowledge base panel ---- */}
       <Col xs={24} lg={8}>
-        <Card title="Base documentaire (politique de stage)">
+        <Card title="Base documentaire (CV et documents)">
           <Upload.Dragger
             accept=".pdf,.docx,.txt,.md"
             multiple={false}

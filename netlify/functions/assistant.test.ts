@@ -94,7 +94,7 @@ beforeEach(() => {
   });
   ingestDocument.mockResolvedValue({
     source_document: "politique.pdf",
-    doc_type: "policy",
+    doc_type: "other",
     chunks: 7,
     embeddings: "pending",
   });
@@ -178,23 +178,23 @@ describe("dépôt de document", () => {
   });
 
   it("ingère, répond 200 avec le nombre d'extraits et lance la vectorisation", async () => {
-    const res = await upload({ file: pdf(), doc_type: "policy" });
+    const res = await upload({ file: pdf(), doc_type: "other" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       source_document: "politique.pdf",
-      doc_type: "policy",
+      doc_type: "other",
       chunks: 7,
       embeddings: "pending",
       status: "ingested",
     });
     expect(ingestDocument).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "politique.pdf", docType: "policy", replace: false }),
+      expect.objectContaining({ name: "politique.pdf", docType: "other", replace: false }),
     );
     expect(triggerEmbedding).toHaveBeenCalledTimes(1);
   });
 
   it("ne lance pas la vectorisation quand elle est désactivée", async () => {
-    ingestDocument.mockResolvedValue({ source_document: "a", doc_type: "policy", chunks: 1, embeddings: "disabled" });
+    ingestDocument.mockResolvedValue({ source_document: "a", doc_type: "other", chunks: 1, embeddings: "disabled" });
     await upload({ file: pdf() });
     expect(triggerEmbedding).not.toHaveBeenCalled();
   });
@@ -222,11 +222,11 @@ describe("dépôt de document", () => {
 describe("liste et suppression", () => {
   it("liste les documents avec leur état de vectorisation", async () => {
     store.listDocuments.mockResolvedValue([
-      { source_document: "p.pdf", chunks: 4, doc_type: "policy", embedded: 2 },
+      { source_document: "p.pdf", chunks: 4, doc_type: "other", embedded: 2 },
     ]);
     const res = await handler(new Request("http://local/api/assistant/documents"), { params: {} });
     expect(await res.json()).toEqual([
-      { source_document: "p.pdf", chunks: 4, doc_type: "policy", embedded: 2 },
+      { source_document: "p.pdf", chunks: 4, doc_type: "other", embedded: 2 },
     ]);
   });
 

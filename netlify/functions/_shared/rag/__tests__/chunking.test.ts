@@ -79,12 +79,13 @@ describe("intertitres et pages", () => {
     expect(headingOf("OK")).toBeNull();
   });
 
-  it("rattache chaque extrait à sa page et à son article", () => {
-    const chunks = chunkPages(fixturePages("politique-stage.md"));
-    const duree = chunks.find((c) => c.content.includes("six mois par année"));
-    expect(duree).toMatchObject({ page: 2, heading: "Article 2 — Durée du stage" });
-    const grat = chunks.find((c) => c.content.includes("3 000 dirhams"));
-    expect(grat).toMatchObject({ page: 3, heading: "Article 3 — Gratification" });
+  it("rattache chaque extrait à sa page et à sa section", () => {
+    const chunks = chunkPages(fixturePages("cv-yasmine-el-amrani.md"));
+    const skills = chunks.find((c) => c.content.includes("FlexSim"));
+    expect(skills?.page).toBe(2);
+    expect(skills?.heading).toContain("COMPÉTENCES TECHNIQUES");
+    const jobs = chunks.find((c) => c.content.includes("Stage d'ingénieur adjoint, Managem"));
+    expect(jobs?.page).toBe(1);
   });
 
   it("propage l'intertitre d'une section qui déborde sur la page suivante", () => {

@@ -53,7 +53,7 @@ export function sanitizeHistory(raw: unknown): ChatMessage[] {
 
 // ---- Vérification des citations ----------------------------------------------------
 
-// Sans espace : « d'après politique.pdf » isole « politique.pdf ». Un nom qui
+// Sans espace : « d'après cv-dupont.pdf » isole « cv-dupont.pdf ». Un nom qui
 // contient des espaces est rapproché par sa fin (voir plus bas).
 const FILE_NAME = /[\p{L}\p{N}_()-][\p{L}\p{N}_().-]*\.(?:pdf|docx|txt|md)\b/giu;
 

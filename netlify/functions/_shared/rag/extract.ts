@@ -1,5 +1,5 @@
 // Extraction du texte d'un document déposé, PAGE PAR PAGE quand c'est possible :
-// la page suit chaque extrait jusqu'à la citation (« politique.pdf, p. 3 »).
+// la page suit chaque extrait jusqu'à la citation (« cv-dupont.pdf, p. 2 »).
 import { extractText, getDocumentProxy } from "unpdf";
 import mammoth from "mammoth";
 import type { PageText } from "./types";

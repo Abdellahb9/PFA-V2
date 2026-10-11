@@ -177,7 +177,7 @@ describe("rag_replace_document — ingestion atomique", () => {
   ];
 
   it("enregistre les extraits non vides, renumérotés sans trou", async () => {
-    const res = await store.replaceDocument("atomic.pdf", "policy", chunks, false);
+    const res = await store.replaceDocument("atomic.pdf", "other", chunks, false);
     expect(res.chunks).toBe(2);
     const r = await db.query<{ chunk_index: number; page: number }>(
       `select c.chunk_index, c.page from public.rag_chunks c
@@ -191,7 +191,7 @@ describe("rag_replace_document — ingestion atomique", () => {
   });
 
   it("refuse un nom existant sans replace (409), dans la même transaction", async () => {
-    await expect(store.replaceDocument("atomic.pdf", "policy", chunks, false)).rejects.toBeInstanceOf(
+    await expect(store.replaceDocument("atomic.pdf", "other", chunks, false)).rejects.toBeInstanceOf(
       DocumentExistsError,
     );
     // Rien n'a bougé.
@@ -220,7 +220,7 @@ describe("rag_replace_document — ingestion atomique", () => {
 });
 
 describe("rag_search_chunks — recherche hybride", () => {
-  const params = (query: string, embedding: number[] | null, docType: "policy" | "cv" | null = null) => ({
+  const params = (query: string, embedding: number[] | null, docType: "other" | "cv" | null = null) => ({
     query,
     embedding,
     matchCount: 10,
@@ -233,7 +233,7 @@ describe("rag_search_chunks — recherche hybride", () => {
   beforeAll(async () => {
     await store.replaceDocument(
       "politique.pdf",
-      "policy",
+      "other",
       [
         { content: "La durée maximale d'un stage est fixée à six mois.", page: 2, heading: "Durée du stage" },
         { content: "Le stagiaire perçoit une gratification mensuelle de 3 000 dirhams.", page: 3, heading: "Gratification" },
@@ -298,12 +298,40 @@ describe("rag_search_chunks — recherche hybride", () => {
   });
 });
 
-describe("migration 0019 — rejouable", () => {
-  it("se rejoue sur une base déjà migrée et CONSERVE les documents", async () => {
-    await store.replaceDocument("rejeu.pdf", "policy", [{ content: "Durée : six mois.", page: 1, heading: null }], true);
+describe("migrations 0019 et 0020 — rejouables", () => {
+  it("se rejouent sur une base déjà migrée et CONSERVENT les documents", async () => {
+    await store.replaceDocument("rejeu.pdf", "other", [{ content: "Durée : six mois.", page: 1, heading: null }], true);
     const before = await store.listDocuments();
-    await applyMigrations(db, (f) => f.startsWith("0019_"));
+    await applyMigrations(db, (f) => f >= "0019_");
     expect(await store.listDocuments()).toEqual(before);
     expect(before.some((d) => d.source_document === "rejeu.pdf")).toBe(true);
+    // Le rejeu de 0019 ne doit pas rouvrir le type retiré par 0020.
+    await expect(
+      store.replaceDocument("rejeu.pdf", "policy" as never, [{ content: "x", page: 1, heading: null }], true),
+    ).rejects.toThrow(/doc_type invalide/);
   });
+});
+
+describe("migration 0020 — la politique de stage sort de la base", () => {
+  it("convertit les documents « policy » en « other » et refuse désormais ce type", async () => {
+    const old = await createDb("0019_rag_rebuild.sql");
+    try {
+      await old.query(
+        "select public.rag_replace_document('ancienne-politique.pdf', 'policy', $1::jsonb, false)",
+        [JSON.stringify([{ content: "Durée : six mois.", page: 1, heading: null }])],
+      );
+      await applyMigrations(old, (f) => f.startsWith("0020_"));
+      const docs = await pgliteStore(old).listDocuments();
+      expect(docs).toEqual([expect.objectContaining({ source_document: "ancienne-politique.pdf", doc_type: "other", chunks: 1 })]);
+      await expect(old.query("insert into public.rag_documents (name, doc_type) values ('p', 'policy')")).rejects.toThrow(
+        /rag_documents_doc_type_check/,
+      );
+      const def = await old.query<{ d: string }>(
+        "insert into public.rag_documents (name) values ('sans-type') returning doc_type as d",
+      );
+      expect(def.rows[0].d).toBe("other");
+    } finally {
+      await old.close();
+    }
+  }, 60_000);
 });

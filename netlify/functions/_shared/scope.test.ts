@@ -163,8 +163,10 @@ describe("isDiscriminatoryRequest — jeu d'évaluation", () => {
     expect(mustCatch.length).toBeGreaterThanOrEqual(8);
   });
 
-  // Un faux positif ici refuserait une vraie question de recrutement.
-  it.each(inScope.map((c) => c.q))("ne bloque PAS la question légitime « %s »", (q) => {
+  // Un faux positif ici refuserait une vraie question de recrutement — ou
+  // présenterait une question hors périmètre comme discriminatoire.
+  const notDiscriminatory = CASES.filter((c) => c.expect !== "discriminatory");
+  it.each(notDiscriminatory.map((c) => c.q))("ne bloque PAS comme discriminatoire « %s »", (q) => {
     expect(isDiscriminatoryRequest(q)).toBe(false);
   });
 

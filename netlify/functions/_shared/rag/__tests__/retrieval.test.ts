@@ -11,7 +11,7 @@ vi.mock("../embeddings", () => ({ embedQuery }));
 const row = (doc: string, index: number, fts: number, cosine: number | null = null): SearchRow => ({
   chunk_id: index,
   source_document: doc,
-  doc_type: "policy",
+  doc_type: "other",
   chunk_index: index,
   page: index + 1,
   heading: `Article ${index}`,
@@ -37,12 +37,12 @@ describe("retrieveDocChunks", () => {
   it("demande un vivier élargi et passe les planchers à la RPC", async () => {
     embedQuery.mockResolvedValue([0.1, 0.2]);
     searchChunks.mockResolvedValue([]);
-    await retrieveDocChunks("durée du stage", 4, "policy");
+    await retrieveDocChunks("durée du stage", 4, "other");
     expect(searchChunks).toHaveBeenCalledWith({
       query: "durée du stage",
       embedding: [0.1, 0.2],
       matchCount: 4 * POOL_FACTOR,
-      docType: "policy",
+      docType: "other",
       minFts: MIN_FTS_RANK,
       minCosine: MIN_COSINE,
       rrfK: RRF_K,
@@ -82,7 +82,7 @@ describe("retrieveDocChunks", () => {
       chunk_index: 1,
       text: "Texte 1",
       similarity: 0.12, // pas 1.0 : jamais normalisée sur le meilleur résultat
-      doc_type: "policy",
+      doc_type: "other",
       page: 2,
       heading: "Article 1",
     });
