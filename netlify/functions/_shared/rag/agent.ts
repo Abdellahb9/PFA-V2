@@ -36,6 +36,19 @@ export const FALLBACK_ANSWER =
   "Je n'ai pas pu aboutir avec les informations disponibles. " +
   "Reformulez la question ou précisez un critère.";
 
+/**
+ * Quota du fournisseur épuisé (HTTP 429, par minute ou PAR JOUR). Inviter à
+ * « reformuler » était faux : aucune reformulation n'y change rien.
+ */
+export const QUOTA_ANSWER =
+  "L'assistant a atteint la limite d'utilisation de son modèle de langage. " +
+  "Réessayez dans quelques minutes.";
+
+/** Message pour une panne du modèle — jamais le texte brut de l'erreur (identifiants du compte). */
+function failureAnswer(err: unknown): string {
+  return (err as { status?: unknown } | null)?.status === 429 ? QUOTA_ANSWER : FALLBACK_ANSWER;
+}
+
 /** Borne l'historique : rôles autorisés, nombre de tours, longueur des messages. */
 export function sanitizeHistory(raw: unknown): ChatMessage[] {
   if (!Array.isArray(raw)) return [];
@@ -179,7 +192,7 @@ export async function* runAgent(
       if (signal?.aborted) return;
       console.error("[rag] agent round failed:", err);
       ragDebug("fallback", { round, cause: "llm call failed", error: String(err) });
-      yield { type: "delta", text: FALLBACK_ANSWER };
+      yield { type: "delta", text: failureAnswer(err) };
       yield { type: "done" };
       return;
     }
@@ -187,20 +200,31 @@ export async function* runAgent(
     let content = "";
     // Les appels d'outils arrivent en fragments : on les recompose par index.
     const calls: { id: string; name: string; args: string }[] = [];
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta;
-      if (!delta) continue;
-      if (delta.content) {
-        content += delta.content;
-        yield { type: "delta", text: delta.content };
+    try {
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta;
+        if (!delta) continue;
+        if (delta.content) {
+          content += delta.content;
+          yield { type: "delta", text: delta.content };
+        }
+        for (const tc of delta.tool_calls ?? []) {
+          const i = tc.index ?? 0;
+          calls[i] ??= { id: "", name: "", args: "" };
+          if (tc.id) calls[i].id = tc.id;
+          if (tc.function?.name) calls[i].name += tc.function.name;
+          if (tc.function?.arguments) calls[i].args += tc.function.arguments;
+        }
       }
-      for (const tc of delta.tool_calls ?? []) {
-        const i = tc.index ?? 0;
-        calls[i] ??= { id: "", name: "", args: "" };
-        if (tc.id) calls[i].id = tc.id;
-        if (tc.function?.name) calls[i].name += tc.function.name;
-        if (tc.function?.arguments) calls[i].args += tc.function.arguments;
-      }
+    } catch (err) {
+      // Panne EN COURS de flux : elle remontait jusqu'à handleChat, qui envoyait
+      // au navigateur le message brut du fournisseur (JSON, identifiant du compte).
+      if (signal?.aborted) return;
+      console.error("[rag] agent stream failed:", err);
+      ragDebug("fallback", { round, cause: "llm stream failed", error: String(err) });
+      yield { type: "delta", text: `${content ? "\n\n" : ""}${failureAnswer(err)}` };
+      yield { type: "done" };
+      return;
     }
 
     // Un appel sans id ne peut pas recevoir de réponse : Groq rejetterait le tour suivant.

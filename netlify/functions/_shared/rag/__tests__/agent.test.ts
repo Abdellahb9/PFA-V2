@@ -23,6 +23,7 @@ import { FINAL_ROUND_INSTRUCTION } from "../prompt";
 import { MAX_TOOL_ROUNDS } from "../config";
 import {
   FALLBACK_ANSWER,
+  QUOTA_ANSWER,
   runAgent,
   sanitizeHistory,
   unverifiedCitations,
@@ -163,6 +164,34 @@ describe("runAgent", () => {
     script([{ fail: true }]);
     const events = await collect(runAgent(user));
     expect(text(events)).toBe(FALLBACK_ANSWER);
+    expect(events.at(-1)).toEqual({ type: "done" });
+  });
+
+  it("dit franchement que le quota du modèle est atteint (429), sans inviter à reformuler", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    // Erreur réelle observée : quota de tokens PAR JOUR de Groq.
+    create.mockRejectedValue(
+      Object.assign(new Error('429 {"error":{"message":"Rate limit reached ... organization `org_x` ... (TPD)"}}'), {
+        status: 429,
+      }),
+    );
+    const events = await collect(runAgent(user));
+    expect(text(events)).toBe(QUOTA_ANSWER);
+    expect(text(events)).not.toMatch(/org_|Rate limit/);
+    expect(events.at(-1)).toEqual({ type: "done" });
+  });
+
+  it("absorbe une panne EN COURS de flux sans exposer l'erreur brute", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    create.mockImplementation(async () =>
+      (async function* () {
+        yield { choices: [{ delta: { content: "Début" } }] };
+        throw Object.assign(new Error("429 org_secret"), { status: 429 });
+      })(),
+    );
+    const events = await collect(runAgent(user));
+    expect(text(events)).toBe(`Début\n\n${QUOTA_ANSWER}`);
+    expect(events.some((e) => e.type === "error")).toBe(false);
     expect(events.at(-1)).toEqual({ type: "done" });
   });
 

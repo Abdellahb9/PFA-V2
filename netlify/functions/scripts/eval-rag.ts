@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FALLBACK_ANSWER,
+  QUOTA_ANSWER,
   embeddingsEnabled,
   embedPending,
   guessDocType,
@@ -148,7 +149,10 @@ function grade(c: EvalCase, last: TurnRecord): Check[] {
   const checks: Check[] = [];
   const refusal = Object.values(REFUSALS).some((r) => a.trim().startsWith(fold(r).slice(0, 40)));
 
-  checks.push({ name: "no_fallback", pass: !last.answer.includes(FALLBACK_ANSWER) });
+  checks.push({
+    name: "no_fallback",
+    pass: !last.answer.includes(FALLBACK_ANSWER) && !last.answer.includes(QUOTA_ANSWER),
+  });
   checks.push({ name: "no_citation_warning", pass: !last.answer.includes("(Attention :") });
   checks.push({ name: "no_error", pass: last.errors.length === 0, detail: last.errors.join(" | ") || undefined });
 
