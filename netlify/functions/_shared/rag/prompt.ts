@@ -164,20 +164,15 @@ export const TOOLS = [
       description:
         "Recherche dans les documents déposés, par le sens ET par les mots (une question " +
         "reformulée ou un synonyme retrouve le passage). Les documents sont des CV et " +
-        "des documents sur les candidats (comptes rendus d'entretien…). 'cv' limite la " +
-        "recherche aux CV ; omets le type pour chercher partout — c'est le bon choix " +
-        "quand une personne peut apparaître ailleurs que dans son CV. Chaque extrait " +
-        "porte son document, sa page et son intertitre.",
+        "des documents sur les candidats (comptes rendus d'entretien…) ; la recherche " +
+        "porte toujours sur tous. Pour une personne, mets son nom dans la requête. " +
+        "Chaque extrait porte son document, sa page et son intertitre (« Nom › Section »).",
+      // Pas de filtre doc_type exposé au modèle : il le choisissait mal (« other »
+      // pour une question sur un CV) et la recherche ne voyait plus le bon document.
       parameters: {
         type: "object",
         properties: {
           query: { type: "string", description: "Requête autonome, en langue naturelle." },
-          doc_type: {
-            type: "string",
-            enum: ["cv", "other"],
-            description:
-              "cv = un CV déposé ; other = tout autre document. Omettre pour chercher partout.",
-          },
           top_k: { type: "number", description: "Nombre d'extraits (défaut 5)." },
         },
         required: ["query"],

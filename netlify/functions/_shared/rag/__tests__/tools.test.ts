@@ -28,6 +28,7 @@ vi.mock("../store", () => ({ getStore: () => ({ countChunks }) }));
 vi.mock("../../supabase", () => ({ admin: () => ({}) }));
 
 import { runTool } from "../tools";
+import { TOOLS } from "../prompt";
 
 const emptyDiag = {
   scanned: 0,
@@ -214,5 +215,14 @@ describe("rank_candidates — le code classe, le modèle explique", () => {
     const { payload, sources } = await runTool("rank_candidates", { field: "data science" });
     expect(payload).toHaveProperty("explication");
     expect(sources).toEqual([]);
+  });
+});
+
+describe("schéma de search_documents", () => {
+  it("n'expose pas de filtre de type au modèle", () => {
+    // Le modèle choisissait « other » pour une question sur un CV : le bon
+    // document disparaissait de la recherche (cas doc-fact-table de l'évaluation).
+    const tool = TOOLS.find((t) => t.function.name === "search_documents")!;
+    expect(Object.keys(tool.function.parameters.properties)).toEqual(["query", "top_k"]);
   });
 });
