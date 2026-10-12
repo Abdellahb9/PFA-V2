@@ -158,6 +158,12 @@ $$;
 -- joignait rag_documents et ajoutait un tri secondaire, ce qui l'en empêchait).
 -- La branche filtrée garde la jointure ; hnsw.iterative_scan (pgvector ≥ 0.8)
 -- évite qu'un filtre sélectif ne vide le résultat.
+--
+-- Sur Supabase, le rôle postgres n'est pas superutilisateur : tant que la
+-- bibliothèque pgvector n'est pas chargée dans la session, hnsw.iterative_scan
+-- n'est qu'un paramètre inconnu et `create function … set` est refusé
+-- (« permission denied to set parameter »). Un premier usage du type la charge.
+select '[0]'::extensions.vector;
 
 drop function if exists public.rag_search_chunks(text, extensions.vector, int, text, real, real, int);
 
