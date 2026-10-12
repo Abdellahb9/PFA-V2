@@ -8,7 +8,7 @@ Usage:
     python scripts/train_forecast.py                # deterministic synthetic data
     python scripts/train_forecast.py --from-supabase # train on live Supabase data
 
-Output: netlify/functions/_shared/forecast_model.json
+Output: server/lib/forecast_model.json
 
 Feature order (must match the TS inference): [lag1, lag2, lag3, roll3, month, capacity]
 """
@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import xgboost as xgb
 
-OUT = Path(__file__).resolve().parents[1] / "netlify" / "functions" / "_shared" / "forecast_model.json"
+OUT = Path(__file__).resolve().parents[1] / "server" / "lib" / "forecast_model.json"
 FEATURES = ["lag1", "lag2", "lag3", "roll3", "month", "capacity"]
 
 

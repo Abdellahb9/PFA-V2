@@ -2,6 +2,12 @@
 
 > Generated 2026-07-03. Exhaustive analysis of the repository at commit `3a925c2` (branch `main`).
 
+> **Historical document.** Since October 2026 the project runs on Vercel only:
+> the Netlify configuration and the legacy self-hosted stack (`backend/` FastAPI +
+> Celery, Docker, Render, Nginx) were removed, and the serverless code moved from
+> `netlify/functions/` to `server/`. See [README.md](README.md) and
+> [DEPLOYMENT.md](DEPLOYMENT.md) for the current architecture.
+
 ---
 
 ## 1. Technologies Used

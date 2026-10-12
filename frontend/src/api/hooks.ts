@@ -1,4 +1,4 @@
-// React Query hooks wrapping the serverless API (Netlify Functions).
+// React Query hooks wrapping the serverless API (Vercel, server/).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import { submitApplicationViaStorage, submitApplicationsBulkViaStorage } from "./upload";

@@ -2,10 +2,15 @@
   "name": "pfa-vercel",
   "private": true,
   "version": "0.0.0",
-  "description": "Vercel deployment wrapper for the PFA app (frontend + api/ functions). CommonJS so Vercel/esbuild bundles the api/ functions (no runtime ESM resolution).",
+  "description": "PFA on Vercel: React frontend (frontend/) + one serverless API (server/, bundled into api/_handler.cjs). CommonJS root so Vercel bundles api/ without runtime ESM resolution.",
   "scripts": {
     "bundle-api": "node scripts/bundle-api.mjs",
-    "vercel-build": "node scripts/bundle-api.mjs && npm --prefix frontend install && npm --prefix frontend run build"
+    "vercel-build": "node scripts/bundle-api.mjs && npm --prefix frontend install && npm --prefix frontend run build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p server",
+    "eval:rag": "tsx --env-file-if-exists=.env server/scripts/eval-rag.ts",
+    "eval:scope": "tsx --env-file-if-exists=.env server/scripts/eval-scope.ts",
+    "rag:demo": "tsx --env-file-if-exists=.env server/scripts/rag-demo.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",
@@ -17,10 +22,14 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@netlify/functions": "^2.8.2",
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-pgvector": "^0.0.9",
     "@types/node": "^22.10.2",
     "@types/ws": "^8.5.13",
+    "debug": "^4.4.3",
     "esbuild": "^0.24.2",
-    "typescript": "^5.6.3"
+    "tsx": "^4.23.12",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }

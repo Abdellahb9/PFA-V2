@@ -1,6 +1,5 @@
-# Other project + legacy backend — not part of the Vercel deployment.
+# Autre projet local — hors du déploiement Vercel.
 nvidia-models-clone
-backend
 
 # Build artifacts / deps (Vercel installs/builds fresh).
 **/node_modules

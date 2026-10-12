@@ -1,10 +1,10 @@
-// Bundle the Vercel API adapter (which reuses the Netlify handlers) into a
+// Bundle the Vercel API router (server/handler.ts and every route) into a
 // single self-contained CommonJS file. This sidesteps Vercel's per-file
 // TypeScript checking and runtime ESM resolution of cross-directory imports.
 import { build } from "esbuild";
 
 await build({
-  entryPoints: ["vercel-src/handler.ts"],
+  entryPoints: ["server/handler.ts"],
   outfile: "api/_handler.cjs",
   bundle: true,
   platform: "node",
