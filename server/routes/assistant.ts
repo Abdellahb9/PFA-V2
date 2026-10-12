@@ -8,7 +8,7 @@
 // POST   /api/assistant/reindex             staff (réanalyse / réindexe chaque candidat)
 import { randomUUID } from "node:crypto";
 import { admin, BUCKET } from "../lib/supabase";
-import { requireStaff, requireUser } from "../lib/auth";
+import { requireStaff, requireUser, type AuthedUser } from "../lib/auth";
 import { json, fail, noContent, methodNotAllowed, readBody } from "../lib/http";
 import { cannedStream, classifyScope } from "../lib/scope";
 import { triggerAnalysis, triggerEmbedding } from "../lib/trigger-analysis";
@@ -30,9 +30,8 @@ import {
   isDocType,
   MAX_UPLOAD_BYTES,
   ragDebug,
-  runAgent,
-  sanitizeHistory,
 } from "../lib/rag";
+import { runAgent, sanitizeHistory } from "../lib/assistant";
 
 // Un message coûte jusqu'à 5 appels LLM facturés plus autant de recherches.
 // Sans plafond, un seul compte peut vider le quota.
@@ -67,7 +66,8 @@ async function checkRateLimit(userId: string): Promise<Response | null> {
 
 // ---- Conversation (SSE) --------------------------------------------------------------
 
-async function handleChat(req: Request, userId: string): Promise<Response> {
+async function handleChat(req: Request, user: AuthedUser): Promise<Response> {
+  const userId = user.id;
   const body = await readBody(req);
   // Le client n'envoie QUE son nouveau message ; les tours précédents sont relus
   // en base. Un historique fourni par le navigateur permettrait de forger de
@@ -86,12 +86,11 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
   ]);
   await saveMessage(conversationId, { role: "user", content: message });
 
-  // Filtre de périmètre AVANT l'agent : une question hors recrutement, ou une
-  // demande de classement discriminatoire, n'atteint jamais le modèle principal.
-  const lastAssistant = [...history].reverse().find((m) => m.role === "assistant")?.content;
-  const scope = await classifyScope(message, lastAssistant);
+  // Filtre déterministe AVANT l'agent : politesses (réponse fixe) et demandes de
+  // classement discriminatoires n'atteignent jamais le modèle.
+  const scope = classifyScope(message);
   ragDebug("scope", { message, ...scope });
-  if (scope.verdict === "off_topic" || scope.verdict === "discriminatory") {
+  if (scope.verdict === "discriminatory") {
     console.info(`assistant: question refusée (${scope.verdict}, via ${scope.via})`);
   }
 
@@ -113,7 +112,9 @@ async function handleChat(req: Request, userId: string): Promise<Response> {
       let sources: unknown[] = [];
       try {
         const events =
-          scope.verdict === "in" ? runAgent(history, req.signal) : cannedStream(scope.verdict, message);
+          scope.verdict === "in"
+            ? runAgent(history, { signal: req.signal, user: { id: user.id, name: user.email } })
+            : cannedStream(scope.verdict, message);
         for await (const event of events) {
           if (event.type === "delta") answer += event.text;
           else if (event.type === "tool") tools.push(event.name);
@@ -286,7 +287,7 @@ export default async (req: Request, ctx: { params?: Record<string, string> }): P
     if (req.method !== "POST") return methodNotAllowed();
     const limited = await checkRateLimit(user.id);
     if (limited) return limited;
-    return handleChat(req, user.id);
+    return handleChat(req, user);
   }
 
   // Fils de conversation : strictement ceux de l'appelant.

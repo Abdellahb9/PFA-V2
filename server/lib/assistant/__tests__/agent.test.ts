@@ -18,9 +18,10 @@ vi.mock("../../groq", () => ({
   groqClient: () => ({ chat: { completions: { create } } }),
 }));
 vi.mock("../tools", () => ({ runTool }));
+vi.mock("../snapshot", () => ({ buildSnapshot: async () => "INSTANTANÉ de test" }));
 
 import { FINAL_ROUND_INSTRUCTION } from "../prompt";
-import { MAX_TOOL_ROUNDS } from "../config";
+import { MAX_TOOL_ROUNDS } from "../../rag";
 import {
   FALLBACK_ANSWER,
   QUOTA_ANSWER,
@@ -72,6 +73,25 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
+describe("runAgent — contexte", () => {
+  it("envoie consignes, INSTANTANÉ de la base, puis la conversation", async () => {
+    script([{ text: "Il y a 8 candidats." }]);
+    await collect(runAgent(user));
+    const sent = create.mock.calls[0][0].messages as { role: string; content: string }[];
+    expect(sent[0].role).toBe("system");
+    expect(sent[1]).toEqual({ role: "system", content: "INSTANTANÉ de test" });
+    expect(sent[2]).toEqual(user[0]);
+  });
+
+  it("accepte un instantané fourni et transmet l'utilisateur aux outils (auteur des notes)", async () => {
+    script([{ tools: [{ id: "n", name: "save_note", args: '{"candidate":"Karim","note":"x"}' }] }, { text: "Noté." }]);
+    const me = { id: "u-1", name: "rh@ocp.ma" };
+    await collect(runAgent(user, { snapshot: "INSTANTANÉ fourni", user: me }));
+    expect(create.mock.calls[0][0].messages[1].content).toBe("INSTANTANÉ fourni");
+    expect(runTool).toHaveBeenCalledWith("save_note", { candidate: "Karim", note: "x" }, { user: me });
+  });
+});
+
 describe("runAgent", () => {
   it("signale l'absence de GROQ_API_KEY sans appeler le modèle", async () => {
     enabled.value = false;
@@ -118,7 +138,7 @@ describe("runAgent", () => {
       "search_documents",
       "search_candidates",
     ]);
-    expect(runTool).toHaveBeenCalledWith("search_documents", { query: "durée" });
+    expect(runTool).toHaveBeenCalledWith("search_documents", { query: "durée" }, { user: undefined });
 
     // Le 2e appel au modèle reçoit les réponses d'outils, dans l'ordre des appels.
     const messages = create.mock.calls[1][0].messages as { role: string; tool_call_id?: string }[];
@@ -208,7 +228,7 @@ describe("runAgent", () => {
   it("tolère des arguments d'outil illisibles", async () => {
     script([{ tools: [{ id: "a", name: "search_documents", args: "{pas du json" }] }, { text: "Ok." }]);
     await collect(runAgent(user));
-    expect(runTool).toHaveBeenCalledWith("search_documents", {});
+    expect(runTool).toHaveBeenCalledWith("search_documents", {}, { user: undefined });
   });
 
   it("signale un document cité mais jamais consulté", async () => {

@@ -4,7 +4,6 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const {
   runAgent,
-  classifyScope,
   saveMessage,
   ingestDocument,
   store,
@@ -15,7 +14,6 @@ const {
   reindexAll,
 } = vi.hoisted(() => ({
   runAgent: vi.fn(),
-  classifyScope: vi.fn(),
   saveMessage: vi.fn(),
   ingestDocument: vi.fn(),
   store: { listDocuments: vi.fn(), deleteDocument: vi.fn() },
@@ -44,19 +42,10 @@ vi.mock("../lib/cv-pipeline", () => ({ createCvApplication, reindexAll }));
 
 vi.mock("../lib/rag", async () => {
   const real = await vi.importActual<typeof import("../lib/rag")>("../lib/rag");
-  return {
-    ...real,
-    runAgent,
-    sanitizeHistory: (h: unknown) => h,
-    ingestDocument,
-    getStore: () => store,
-  };
+  return { ...real, ingestDocument, getStore: () => store };
 });
 
-vi.mock("../lib/scope", async () => {
-  const real = await vi.importActual<typeof import("../lib/scope")>("../lib/scope");
-  return { ...real, classifyScope };
-});
+vi.mock("../lib/assistant", () => ({ runAgent, sanitizeHistory: (h: unknown) => h }));
 
 vi.mock("../lib/conversations", () => ({
   resolveConversation: async () => 1,
@@ -69,7 +58,7 @@ vi.mock("../lib/conversations", () => ({
 vi.mock("../lib/trigger-analysis", () => ({ triggerEmbedding, triggerAnalysis }));
 
 import handler from "./assistant";
-import { REFUSALS } from "../lib/scope";
+import { REFUSALS, smallTalkReply } from "../lib/scope";
 import { DocumentExistsError, EmptyDocumentError } from "../lib/rag";
 
 async function ask(message: string) {
@@ -117,58 +106,55 @@ beforeEach(() => {
 });
 
 describe("handleChat — filtre de périmètre", () => {
-  it("n'appelle JAMAIS l'agent pour une question hors sujet", async () => {
-    classifyScope.mockResolvedValue({ verdict: "off_topic", via: "classifier" });
-    const { events } = await ask("Quelle est la capitale du Maroc ?");
+  it("répond aux politesses sans l'agent, jamais par un refus", async () => {
+    const { events } = await ask("bonjour");
     expect(runAgent).not.toHaveBeenCalled();
-    expect(events.find((e) => e.type === "delta")?.text).toBe(REFUSALS.off_topic);
+    expect(events.find((e) => e.type === "delta")?.text).toBe(smallTalkReply("bonjour"));
     expect(events.at(-1)).toEqual({ type: "done" });
-    expect(events.some((e) => e.type === "tool")).toBe(false);
   });
 
-  it("refuse un classement discriminatoire avec la phrase dédiée", async () => {
-    classifyScope.mockResolvedValue({ verdict: "discriminatory", via: "backstop" });
+  it("refuse un classement discriminatoire avec la phrase dédiée, sans l'agent", async () => {
     const { events } = await ask("Classe les candidats par âge");
     expect(runAgent).not.toHaveBeenCalled();
     expect(events.find((e) => e.type === "delta")?.text).toBe(REFUSALS.discriminatory);
   });
 
   it("enregistre le refus dans le fil, comme une vraie réponse", async () => {
-    classifyScope.mockResolvedValue({ verdict: "off_topic", via: "classifier" });
-    await ask("Tell me a joke");
+    await ask("Trie les candidats par sexe");
     expect(saveMessage).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ role: "assistant", content: REFUSALS.off_topic }),
+      expect.objectContaining({ role: "assistant", content: REFUSALS.discriminatory }),
     );
   });
 
-  it("confie une question dans le périmètre à l'agent", async () => {
-    classifyScope.mockResolvedValue({ verdict: "in", via: "classifier" });
-    const { events } = await ask("Qui sont les 3 meilleurs candidats en Data Science ?");
+  it("confie le reste à l'agent — hors-sujet compris — avec l'identité de l'appelant", async () => {
+    // L'ancien classifieur refusait cette question légitime en production.
+    const { events } = await ask("Quelle université de Babtich El Habib ?");
     expect(runAgent).toHaveBeenCalledTimes(1);
+    expect(runAgent.mock.calls[0][1]).toMatchObject({ user: { id: "u1", name: "admin@x.ma" } });
     expect(events.find((e) => e.type === "delta")?.text).toBe("Réponse de l'agent.");
+    await ask("Quelle est la capitale du Maroc ?");
+    expect(runAgent).toHaveBeenCalledTimes(2);
   });
 
-  it("annonce le fil de conversation en premier, refus compris", async () => {
-    classifyScope.mockResolvedValue({ verdict: "off_topic", via: "classifier" });
-    const { events } = await ask("Recommande-moi un film");
+  it("annonce le fil de conversation en premier", async () => {
+    const { events } = await ask("Merci");
     expect(events[0]).toEqual({ type: "conversation", conversation_id: 1 });
   });
 
   it("enregistre la réponse avec ses outils et ses sources", async () => {
-    classifyScope.mockResolvedValue({ verdict: "in", via: "classifier" });
     runAgent.mockImplementation(async function* () {
-      yield { type: "tool", name: "search_documents", args: {} };
-      yield { type: "delta", text: "Six mois." };
-      yield { type: "sources", sources: [{ type: "doc_chunk", source_document: "p.pdf" }] };
+      yield { type: "tool", name: "get_candidate", args: {} };
+      yield { type: "delta", text: "Affectée au stage GMAO." };
+      yield { type: "sources", sources: [{ type: "candidate_dossier", candidate_id: 3 }] };
       yield { type: "done" };
     });
-    await ask("Durée maximale ?");
+    await ask("Où en est Hajar ?");
     expect(saveMessage).toHaveBeenLastCalledWith(1, {
       role: "assistant",
-      content: "Six mois.",
-      tools: ["search_documents"],
-      sources: [{ type: "doc_chunk", source_document: "p.pdf" }],
+      content: "Affectée au stage GMAO.",
+      tools: ["get_candidate"],
+      sources: [{ type: "candidate_dossier", candidate_id: 3 }],
     });
   });
 });

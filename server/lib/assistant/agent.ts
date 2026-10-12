@@ -1,22 +1,27 @@
 // Agent conversationnel à outils : construction du prompt, appels au modèle,
 // exécution des outils, réponse en flux.
 //
-// Le modèle reçoit toute la conversation et choisit lui-même ses outils —
-// plusieurs, ou aucun (« merci »). Les appels d'outils d'un même tour sont
-// exécutés EN PARALLÈLE ; la réponse est diffusée token par token.
+// Le modèle reçoit les consignes, l'INSTANTANÉ de la base (chiffres et registre
+// des candidats, frais à chaque message) et toute la conversation ; il choisit
+// lui-même ses outils — plusieurs, ou aucun (« combien de candidats ? » se
+// répond depuis l'instantané). Les appels d'un même tour sont exécutés EN
+// PARALLÈLE ; la réponse est diffusée token par token.
 import type Groq from "groq-sdk";
 import { ASSISTANT_MODEL, groqClient, groqEnabled } from "../groq";
 import {
   AGENT_TEMPERATURE,
+  clip,
   MAX_HISTORY,
   MAX_MESSAGE_CHARS,
   MAX_TOOL_ROUNDS,
   MAX_TOOL_RESULT_CHARS,
-} from "./config";
-import { toolResultContent } from "./context";
-import { clip, ragDebug, ragDebugEnabled } from "./debug";
+  ragDebug,
+  ragDebugEnabled,
+  toolResultContent,
+} from "../rag";
 import { FINAL_ROUND_INSTRUCTION, SYSTEM, TOOLS } from "./prompt";
-import { runTool, type ToolArgs } from "./tools";
+import { buildSnapshot } from "./snapshot";
+import { runTool, type ToolArgs, type ToolContext } from "./tools";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -116,15 +121,25 @@ export function unverifiedCitations(answer: string, sources: unknown[], priorTex
 /** Clé de déduplication d'une source : un même extrait peut revenir de plusieurs tours. */
 function sourceKey(s: unknown): string {
   const r = (s ?? {}) as Record<string, unknown>;
-  return JSON.stringify([r.type, r.candidate_id, r.assignment_id, r.source_document, r.chunk_index]);
+  return JSON.stringify([r.type, r.candidate_id, r.note_id, r.source_document, r.chunk_index]);
+}
+
+export interface AgentOptions {
+  signal?: AbortSignal;
+  /** L'utilisateur qui pose la question : auteur des notes enregistrées. */
+  user?: ToolContext["user"];
+  /** Instantané à utiliser (tests) ; par défaut, construit depuis la base. */
+  snapshot?: string;
 }
 
 type Message = Groq.Chat.ChatCompletionMessageParam;
 
 export async function* runAgent(
   history: ChatMessage[],
-  signal?: AbortSignal,
+  options: AgentOptions = {},
 ): AsyncGenerator<AgentEvent> {
+  const { signal } = options;
+  const toolContext: ToolContext = { user: options.user };
   if (!groqEnabled()) {
     yield {
       type: "error",
@@ -135,7 +150,12 @@ export async function* runAgent(
   }
 
   const client = groqClient();
-  const messages: Message[] = [{ role: "system", content: SYSTEM }, ...history];
+  const snapshot = options.snapshot ?? (await buildSnapshot());
+  const messages: Message[] = [
+    { role: "system", content: SYSTEM },
+    { role: "system", content: snapshot },
+    ...history,
+  ];
   // Documents déjà cités aux tours précédents (réponses + notes [contexte : …]).
   const priorAnswers = history
     .filter((m) => m.role === "assistant")
@@ -278,7 +298,7 @@ export async function* runAgent(
     const results = await Promise.all(
       parsed.map(async ({ call, args }) => {
         try {
-          return await runTool(call.name, args);
+          return await runTool(call.name, args, toolContext);
         } catch (err) {
           return {
             payload: { erreur: err instanceof Error ? err.message : "échec de l'outil" },

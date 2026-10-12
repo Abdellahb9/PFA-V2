@@ -9,8 +9,6 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p server",
     "eval:rag": "tsx --env-file-if-exists=.env server/scripts/eval-rag.ts",
-    "eval:scope": "tsx --env-file-if-exists=.env server/scripts/eval-scope.ts",
-    "rag:demo": "tsx --env-file-if-exists=.env server/scripts/rag-demo.ts",
     "reindex": "tsx --env-file-if-exists=.env server/scripts/reindex.ts"
   },
   "dependencies": {

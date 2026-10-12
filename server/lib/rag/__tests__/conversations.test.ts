@@ -20,6 +20,17 @@ describe("contextNote", () => {
     );
   });
 
+  it("retient aussi les dossiers, les notes et le titre des CV", () => {
+    const note = contextNote([
+      { type: "candidate_dossier", candidate_id: 3, name: "Hajar Ait Ouarab" },
+      { type: "note", note_id: 9, candidate_id: 4, name: "Omar Fassi", body: "…" },
+      { type: "doc_chunk", source_document: "cv-candidat-3", title: "CV — Hajar Ait Ouarab", chunk_index: 0, page: 1 },
+    ]);
+    expect(note).toBe(
+      "[contexte : candidats — Hajar Ait Ouarab (#3), Omar Fassi (#4) ; documents — CV — Hajar Ait Ouarab p.1]",
+    );
+  });
+
   it("ne produit rien sans source exploitable", () => {
     expect(contextNote(null)).toBe("");
     expect(contextNote([])).toBe("");

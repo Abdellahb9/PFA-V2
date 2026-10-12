@@ -117,13 +117,15 @@ export function contextNote(sources: unknown, max = 6): string {
   const docs: string[] = [];
   for (const s of sources as Record<string, unknown>[]) {
     if (!s || typeof s !== "object") continue;
-    if ((s.type === "candidate" || s.type === "ranked_candidate") && s.name) {
+    const isPerson = ["candidate", "ranked_candidate", "candidate_dossier", "note"].includes(String(s.type));
+    if (isPerson && s.name) {
       const id = s.candidate_id ?? s.candidateId;
       people.push(id != null ? `${s.name} (#${id})` : String(s.name));
     } else if (s.type === "matching_explanation" && s.assignment_id != null) {
       people.push(`affectation #${s.assignment_id}`);
-    } else if (s.type === "doc_chunk" && s.source_document) {
-      docs.push(s.page != null ? `${s.source_document} p.${s.page}` : String(s.source_document));
+    } else if (s.type === "doc_chunk" && (s.title || s.source_document)) {
+      const doc = String(s.title ?? s.source_document);
+      docs.push(s.page != null ? `${doc} p.${s.page}` : doc);
     }
   }
   const uniq = (xs: string[]) => [...new Set(xs)].slice(0, max);

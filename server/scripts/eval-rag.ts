@@ -1,34 +1,34 @@
-// Évaluation RÉELLE de l'assistant de bout en bout, contre un jeu étiqueté.
+// Évaluation RÉELLE de l'assistant, de bout en bout, contre un jeu étiqueté.
 //
-//   (à la racine du dépôt)
 //   npm run eval:rag                              # charge .env (--env-file-if-exists)
 //   npm run eval:rag -- --out eval-after.json     # garde le détail de chaque cas
-//   npm run eval:rag -- --only followup-year      # un cas (ou plusieurs, séparés par des virgules)
+//   npm run eval:rag -- --only transcript-how-many,cv-english
+//   npm run eval:rag -- --category "faits de CV"
 //   npm run eval:rag -- --compare a.json b.json   # avant / après, sans rien appeler
 //   RAG_DEBUG=1 npm run eval:rag                  # + requêtes, extraits classés, prompts
 //
-// Chaîne testée, la même qu'en production (assistant.ts handleChat) :
-// filtre de périmètre → agent gpt-oss-120b → outils → recherche SQL réelle.
-// Les documents vivent dans une base PGlite en mémoire où sont jouées les VRAIES
-// migrations (aucune écriture dans Supabase) ; candidats, offres et classements
-// sont lus dans la vraie base, en lecture seule. Sans MISTRAL_API_KEY la
-// recherche documentaire est purement plein-texte.
+// Chaîne testée, la même qu'en production (routes/assistant.ts handleChat) :
+// filtre de périmètre → agent (Groq réel) → outils → RPC SQL réelles. Toute la
+// base vit dans PGlite (vraies migrations + jeu synthétique + CV indexés) :
+// AUCUNE lecture ni écriture dans Supabase. Seule GROQ_API_KEY est requise ;
+// avec GEMINI_API_KEY, la recherche dans les CV est hybride (sinon plein-texte).
+//
+// Offre gratuite de Groq : ≈ 200 000 tokens par jour pour gpt-oss-120b, et un
+// cas coûte 5 000 à 15 000 tokens. Une évaluation complète peut donc demander
+// deux jours : utilisez --only / --category pour la répartir.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FALLBACK_ANSWER,
   QUOTA_ANSWER,
-  embeddingsEnabled,
-  embedPending,
-  guessDocType,
-  ingestPages,
   runAgent,
   sanitizeHistory,
-  setStore,
   type ChatMessage,
-} from "../lib/rag";
-import { createDb, fixturePages, pgliteStore } from "../lib/rag/__tests__/helpers";
+} from "../lib/assistant";
+import { createAssistantDb, pgliteRpc } from "../lib/assistant/__tests__/helpers";
+import { embeddingsEnabled, embedPending } from "../lib/rag";
+import { setRpcClient } from "../lib/rpc";
 import { cannedStream, classifyScope, REFUSALS } from "../lib/scope";
 import { contextNote } from "../lib/conversations";
 
@@ -38,21 +38,22 @@ const EVAL_FILE = join(HERE, "..", "lib", "eval", "assistant-rag.json");
 interface Expect {
   tools?: string[];
   tools_none?: boolean;
-  retrieved?: { doc: string; contains?: string };
   answer_contains?: string[];
   answer_any?: string[];
   answer_not_contains?: string[];
   answer_not_match?: string;
   not_found?: boolean;
   refused?: boolean;
-  cites_doc?: string;
-  has_sources?: boolean;
+  /** Titre de document que la réponse doit citer (« CV — Yasmine El Amrani »). */
+  cites?: string;
 }
+
+type Turn = string | { new_conversation: true };
 
 interface EvalCase {
   id: string;
   category: string;
-  turns: string[];
+  turns: Turn[];
   expect: Expect;
 }
 
@@ -93,37 +94,39 @@ const fold = (s: string) =>
     .toLowerCase();
 
 const NOT_FOUND =
-  /(aucun|aucune|pas trouve|introuvable|ne figure|n'apparai|pas d'information|ne mentionne|n'indique|ne precise|ne contient|pas mentionne|pas disponible|non precise|non indique|pas precise|pas indique|n'est pas (?:renseigne|indique|precise|mentionne)|not found|no information|not mentioned|does not mention|doesn't mention|isn't mentioned|is not mentioned|not available)/;
+  /(aucun|aucune|pas trouve|introuvable|ne figure|n'apparai|pas d'information|ne mentionne|n'indique|ne precise|ne contient|pas mentionne|pas disponible|non precise|non indique|pas precise|pas indique|n'est pas (?:renseigne|indique|precise|mentionne)|personne (?:de|ne)|not found|no information|not mentioned|does not mention|doesn't mention|isn't mentioned|is not mentioned|not available|no candidate)/;
 
-const baseName = (doc: string) => fold(doc).replace(/\.(pdf|docx|txt|md)$/, "");
+const isRefusal = (answer: string) =>
+  Object.values(REFUSALS).some((r) => fold(answer).trim().startsWith(fold(r).slice(0, 40)));
 
 // ---- Exécution d'un tour, comme handleChat ---------------------------------------------
 
-async function runTurn(history: ChatMessage[], question: string, errors: string[]): Promise<TurnRecord> {
+async function runTurn(history: ChatMessage[], question: string): Promise<TurnRecord> {
   const t0 = Date.now();
   const fullHistory = sanitizeHistory([...history, { role: "user", content: question }]);
-  const lastAssistant = [...fullHistory].reverse().find((m) => m.role === "assistant")?.content;
-  const scope = await classifyScope(question, lastAssistant);
+  const scope = classifyScope(question);
   const rec: TurnRecord = {
     question,
     scope: `${scope.verdict} (${scope.via})`,
     tools: [],
     sources: [],
     answer: "",
-    errors,
+    errors: [],
     ms: 0,
   };
-  const events = scope.verdict === "in" ? runAgent(fullHistory) : cannedStream(scope.verdict, question);
+  const events =
+    scope.verdict === "in"
+      ? runAgent(fullHistory, { user: { id: null, name: "évaluation" } })
+      : cannedStream(scope.verdict, question);
   try {
     for await (const ev of events) {
       if (ev.type === "delta") rec.answer += ev.text;
       else if (ev.type === "tool") rec.tools.push({ name: ev.name, args: ev.args });
       else if (ev.type === "sources") rec.sources = ev.sources as Record<string, unknown>[];
-      else if (ev.type === "error") errors.push(`event error: ${ev.message}`);
+      else if (ev.type === "error") rec.errors.push(`event error: ${ev.message}`);
     }
   } catch (err) {
-    // Une exception levée pendant le flux remonte jusqu'à handleChat en production.
-    errors.push(`stream threw: ${err instanceof Error ? err.message : String(err)}`);
+    rec.errors.push(`stream threw: ${err instanceof Error ? err.message : String(err)}`);
   }
   rec.ms = Date.now() - t0;
   return rec;
@@ -145,50 +148,31 @@ function grade(c: EvalCase, last: TurnRecord): Check[] {
   const e = c.expect;
   const a = fold(last.answer);
   const called = last.tools.map((t) => t.name);
-  const docSources = last.sources.filter((s) => s.type === "doc_chunk");
-  const checks: Check[] = [];
-  const refusal = Object.values(REFUSALS).some((r) => a.trim().startsWith(fold(r).slice(0, 40)));
-
-  checks.push({
-    name: "no_fallback",
-    pass: !last.answer.includes(FALLBACK_ANSWER) && !last.answer.includes(QUOTA_ANSWER),
-  });
-  checks.push({ name: "no_citation_warning", pass: !last.answer.includes("(Attention :") });
-  checks.push({ name: "no_error", pass: last.errors.length === 0, detail: last.errors.join(" | ") || undefined });
-
+  const refusal = isRefusal(last.answer);
+  const checks: Check[] = [
+    {
+      name: "no_fallback",
+      pass: !last.answer.includes(FALLBACK_ANSWER) && !last.answer.includes(QUOTA_ANSWER),
+    },
+    { name: "no_citation_warning", pass: !last.answer.includes("(Attention :") },
+    { name: "no_error", pass: last.errors.length === 0, detail: last.errors.join(" | ") || undefined },
+  ];
   if (e.tools) {
     const missing = e.tools.filter((t) => !called.includes(t));
     checks.push({ name: "tools", pass: !missing.length, detail: `called=[${called.join(",")}]` });
   }
   if (e.tools_none) checks.push({ name: "tools_none", pass: called.length === 0, detail: called.join(",") });
-  if (e.retrieved) {
-    const hit = docSources.find(
-      (s) =>
-        s.source_document === e.retrieved!.doc &&
-        (!e.retrieved!.contains || fold(String(s.text)).includes(fold(e.retrieved!.contains))),
-    );
-    checks.push({
-      name: "retrieved",
-      pass: !!hit,
-      detail: docSources.map((s) => `${s.source_document}#${s.chunk_index}`).join(", ") || "aucun extrait",
-    });
-  }
-  for (const s of e.answer_contains ?? []) {
-    checks.push({ name: `contains:${s}`, pass: a.includes(fold(s)) });
-  }
+  for (const s of e.answer_contains ?? []) checks.push({ name: `contains:${s}`, pass: a.includes(fold(s)) });
   if (e.answer_any) {
     checks.push({ name: `any:${e.answer_any.join("|")}`, pass: e.answer_any.some((s) => a.includes(fold(s))) });
   }
-  for (const s of e.answer_not_contains ?? []) {
-    checks.push({ name: `not_contains:${s}`, pass: !a.includes(fold(s)) });
-  }
+  for (const s of e.answer_not_contains ?? []) checks.push({ name: `not_contains:${s}`, pass: !a.includes(fold(s)) });
   if (e.answer_not_match) {
     checks.push({ name: `not_match:${e.answer_not_match}`, pass: !new RegExp(e.answer_not_match, "i").test(a) });
   }
   if (e.not_found) checks.push({ name: "admits_not_found", pass: NOT_FOUND.test(a) && !refusal });
   if (e.refused !== undefined) checks.push({ name: e.refused ? "refused" : "not_refused", pass: refusal === e.refused });
-  if (e.cites_doc) checks.push({ name: "cites_doc", pass: a.includes(baseName(e.cites_doc)) });
-  if (e.has_sources) checks.push({ name: "has_sources", pass: docSources.length > 0 });
+  if (e.cites) checks.push({ name: `cites:${e.cites}`, pass: a.includes(fold(e.cites)) });
   return checks;
 }
 
@@ -199,7 +183,9 @@ function captureConsole(sink: string[]): () => void {
   const grab =
     (level: string) =>
     (...args: unknown[]) =>
-      sink.push(`${level}: ${args.map((x) => (typeof x === "string" ? x : x instanceof Error ? x.message : JSON.stringify(x))).join(" ")}`);
+      sink.push(
+        `${level}: ${args.map((x) => (typeof x === "string" ? x : x instanceof Error ? x.message : JSON.stringify(x))).join(" ")}`,
+      );
   console.debug = grab("debug");
   console.warn = grab("warn");
   console.error = grab("error");
@@ -208,7 +194,10 @@ function captureConsole(sink: string[]): () => void {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const rateLimited = (logs: string[]) => logs.some((l) => /429|rate.?limit|tokens per minute/i.test(l));
+/** 429 « par minute » : réessayer a un sens. 429 « par jour » (TPD) : non. */
+const perMinuteLimit = (logs: string[]) =>
+  logs.some((l) => /429|rate.?limit/i.test(l)) && !logs.some((l) => /tokens per day|\(TPD\)/i.test(l));
+const dailyLimit = (logs: string[]) => logs.some((l) => /tokens per day|\(TPD\)/i.test(l));
 
 // ---- Comparaison avant / après --------------------------------------------------------------
 
@@ -224,12 +213,7 @@ function compare(beforeFile: string, afterFile: string) {
     console.log(`${r.id.padEnd(30)} ${mark(b)}  ${mark(r)}  ${failed}`);
   }
   const score = (rs: CaseResult[]) => `${rs.filter((r) => r.pass).length}/${rs.length}`;
-  const checks = (rs: CaseResult[]) => {
-    const all = rs.flatMap((r) => r.checks);
-    return `${all.filter((c) => c.pass).length}/${all.length}`;
-  };
   console.log(`\nCas réussis    avant ${score([...before.values()])}   après ${score(after)}`);
-  console.log(`Checks réussis avant ${checks([...before.values()])}   après ${checks(after)}`);
 }
 
 // ---- Programme -------------------------------------------------------------------------------
@@ -243,44 +227,42 @@ async function main() {
   const cmp = process.argv.indexOf("--compare");
   if (cmp !== -1) return compare(process.argv[cmp + 1], process.argv[cmp + 2]);
 
-  const missing = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "GROQ_API_KEY"].filter((k) => !process.env[k]);
-  if (missing.length) {
-    console.error(`Variables manquantes : ${missing.join(", ")}`);
+  if (!process.env.GROQ_API_KEY) {
+    console.error("GROQ_API_KEY manquante : impossible d'interroger le modèle.");
     process.exit(2);
   }
 
-  const spec = JSON.parse(readFileSync(EVAL_FILE, "utf8")) as {
-    corpus: { file: string; name: string }[];
-    cases: EvalCase[];
-  };
+  const spec = JSON.parse(readFileSync(EVAL_FILE, "utf8")) as { cases: EvalCase[] };
   const only = arg("--only")?.split(",");
-  const cases = only ? spec.cases.filter((c) => only.includes(c.id)) : spec.cases;
-  const delayMs = Number(arg("--delay") ?? 6000);
+  const category = arg("--category");
+  const cases = spec.cases.filter(
+    (c) => (!only || only.includes(c.id)) && (!category || c.category === category),
+  );
+  const delayMs = Number(arg("--delay") ?? 4000);
 
-  // Base documentaire en mémoire, alimentée comme un dépôt réel (type deviné).
-  const db = await createDb();
-  setStore(pgliteStore(db));
-  for (const doc of spec.corpus) {
-    const type = guessDocType(doc.name, doc.name);
-    const res = await ingestPages(doc.name, fixturePages(doc.file), type, false);
-    console.log(`corpus: ${doc.name} → ${res.chunks} extraits (${type})`);
-  }
+  // Toute la base dans PGlite : migrations, jeu synthétique, CV indexés.
+  const { db } = await createAssistantDb();
+  setRpcClient(pgliteRpc(db));
   if (embeddingsEnabled()) console.log(`vectorisé : ${await embedPending()} extraits`);
-  else console.log("MISTRAL_API_KEY absente : recherche plein-texte seule");
+  else console.log("GEMINI_API_KEY absente : recherche dans les CV en plein-texte seul");
 
   const results: CaseResult[] = [];
   for (const c of cases) {
     let result: CaseResult | null = null;
-    for (let attempt = 0; attempt <= 3; attempt++) {
+    for (let attempt = 0; attempt <= 2; attempt++) {
       const logs: string[] = [];
       const restore = captureConsole(logs);
       const turns: TurnRecord[] = [];
       try {
         let history: ChatMessage[] = [];
-        for (const q of c.turns) {
-          const t = await runTurn(history, q, []);
-          turns.push(t);
-          history = appendTurn(history, t);
+        for (const t of c.turns) {
+          if (typeof t !== "string") {
+            history = []; // nouvelle conversation ; la base garde ce qui a été noté
+            continue;
+          }
+          const rec = await runTurn(history, t);
+          turns.push(rec);
+          history = appendTurn(history, rec);
         }
       } finally {
         restore();
@@ -288,29 +270,30 @@ async function main() {
       const last = turns[turns.length - 1];
       result = { id: c.id, category: c.category, checks: grade(c, last), turns, logs, pass: false };
       result.pass = result.checks.every((k) => k.pass);
-      // Un 429 mesure le quota Groq, pas l'assistant : on patiente et on rejoue.
-      if (!rateLimited(logs) || attempt === 3) break;
-      console.log(`   … ${c.id} : quota Groq atteint, nouvelle tentative dans ${(attempt + 1) * 30} s`);
+      if (dailyLimit(logs)) {
+        console.log("   … quota QUOTIDIEN de Groq épuisé : arrêt de l'évaluation.");
+        break;
+      }
+      if (!perMinuteLimit(logs) || attempt === 2) break;
+      console.log(`   … ${c.id} : limite par minute, nouvelle tentative dans ${(attempt + 1) * 30} s`);
       await sleep((attempt + 1) * 30_000);
     }
-    results.push(result!);
     const r = result!;
+    results.push(r);
     const last = r.turns[r.turns.length - 1];
-    const failed = r.checks.filter((k) => !k.pass);
     console.log(
       `${r.pass ? "PASS" : "FAIL"} ${r.id.padEnd(28)} [${last.scope}] tools=${last.tools.map((t) => t.name).join(",") || "-"} ${last.ms} ms`,
     );
     console.log(`     Q: ${last.question}`);
     console.log(`     R: ${last.answer.replace(/\s+/g, " ").slice(0, 400)}`);
-    for (const k of failed) console.log(`     ✗ ${k.name}${k.detail ? ` (${k.detail})` : ""}`);
+    for (const k of r.checks.filter((k) => !k.pass)) console.log(`     ✗ ${k.name}${k.detail ? ` (${k.detail})` : ""}`);
     if (process.env.RAG_DEBUG) for (const l of r.logs) console.log(`     · ${l.slice(0, 4000)}`);
+    if (dailyLimit(r.logs)) break;
     await sleep(delayMs);
   }
 
-  // Bilan par catégorie.
   console.log("\n── Bilan ─────────────────────────────────────────────");
-  const cats = [...new Set(results.map((r) => r.category))];
-  for (const cat of cats) {
+  for (const cat of [...new Set(results.map((r) => r.category))]) {
     const rs = results.filter((r) => r.category === cat);
     console.log(`${cat.padEnd(28)} ${rs.filter((r) => r.pass).length}/${rs.length}`);
   }
