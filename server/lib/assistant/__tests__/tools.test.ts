@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { createAssistantDb, pgliteRpc } from "./helpers";
-import { clampInt, optionalNumber, runTool } from "../tools";
+import { clampInt, optionalNumber, presentForModel, runTool } from "../tools";
 import { setRpcClient, type RpcClient } from "../../rpc";
 
 let db: PGlite;
@@ -148,6 +148,27 @@ describe("save_note", () => {
   it("n'écrit rien pour un nom ambigu ou une note vide", async () => {
     expect((await run("save_note", { candidate: "Youssef", note: "x" }, me)).payload.ambigu).toBe("Youssef");
     expect((await run("save_note", { candidate: "Omar Fassi", note: "   " }, me)).payload.erreur).toBeDefined();
+  });
+});
+
+describe("présentation au modèle", () => {
+  it("rend les scores en pourcentage, sans nom technique ni décimal brut", async () => {
+    const { payload, sources } = await run("get_candidate", { candidate: "Hajar Ait Ouarab" });
+    const text = JSON.stringify(payload);
+    expect(text).not.toMatch(/match_score|score_breakdown|0\.88/);
+    expect(payload.dossier.applications[0].assignment).toMatchObject({
+      score_adequation: "88 %",
+      detail_du_score: { competences: "83 %", formation: "100 %" },
+    });
+    expect(sources[0].type).toBe("candidate_dossier"); // l'interface garde ses valeurs
+  });
+
+  it("ne touche ni aux listes ni aux autres nombres", () => {
+    expect(presentForModel({ skills: ["python"], years_experience: 2, score: 0.5 })).toEqual({
+      skills: ["python"],
+      years_experience: 2,
+      score_adequation: "50 %",
+    });
   });
 });
 

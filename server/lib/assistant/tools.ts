@@ -161,7 +161,9 @@ async function searchCvsTool(args: ToolArgs): Promise<ToolResult> {
       payload: {
         cv_de: candidate.name,
         extraits: [],
-        explication: `Le CV indexé de ${candidate.name} ne contient rien sur ce point (ou aucun CV n'est indexé : voir get_candidate). Dis-le en une phrase.`,
+        explication:
+          `Ni le CV de ${candidate.name} ni les documents qui le citent ne contiennent rien sur ce point ` +
+          `(ou aucun CV n'est indexé : voir get_candidate). Dis-le en une phrase.`,
       },
       sources: [],
     };
@@ -331,6 +333,44 @@ async function saveNoteTool(args: ToolArgs, ctx: ToolContext): Promise<ToolResul
   };
 }
 
+// ---- Présentation au modèle -----------------------------------------------------------
+
+/** Scores rendus en pourcentage, sous un nom lisible. */
+const SCORE_KEYS: Record<string, string> = {
+  match_score: "score_adequation",
+  last_score: "score_adequation",
+  score: "score_adequation",
+  skills_coverage: "couverture_competences",
+  education_fit: "adequation_formation",
+};
+
+const pct = (v: number) => `${Math.round(v * 100)} %`;
+
+/**
+ * Ce que le modèle lit : les scores en pourcentage (« 88 % »), sous des noms
+ * lisibles. Il recopiait sinon « match_score = 0.88 » tel quel dans ses
+ * réponses. Les sources envoyées à l'interface gardent les valeurs brutes.
+ */
+export function presentForModel(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(presentForModel);
+  if (!value || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+    if (key === "score_breakdown" && v && typeof v === "object") {
+      const b = v as Record<string, unknown>;
+      out.detail_du_score = {
+        competences: typeof b.skills === "number" ? pct(b.skills) : (b.skills ?? null),
+        formation: typeof b.education === "number" ? pct(b.education) : (b.education ?? null),
+      };
+    } else if (key in SCORE_KEYS && typeof v === "number") {
+      out[SCORE_KEYS[key]] = pct(v);
+    } else {
+      out[key] = presentForModel(v);
+    }
+  }
+  return out;
+}
+
 const HANDLERS: Record<string, (args: ToolArgs, ctx: ToolContext) => Promise<ToolResult>> = {
   get_candidate: getCandidateTool,
   search_cvs: searchCvsTool,
@@ -344,5 +384,6 @@ const HANDLERS: Record<string, (args: ToolArgs, ctx: ToolContext) => Promise<Too
 export async function runTool(name: string, args: ToolArgs, ctx: ToolContext = {}): Promise<ToolResult> {
   const handler = HANDLERS[name];
   if (!handler) return { payload: { erreur: `Outil inconnu : ${name}` }, sources: [] };
-  return handler(args ?? {}, ctx);
+  const res = await handler(args ?? {}, ctx);
+  return { payload: presentForModel(res.payload), sources: res.sources };
 }
