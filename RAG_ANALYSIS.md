@@ -1,23 +1,37 @@
 # RAG system analysis
 
-Read-only analysis of the retrieval-augmented assistant ("Assistant IA PHOSBOUCRAA / OCP stages"). No code was modified.
+Analysis of the retrieval-augmented assistant ("Assistant IA PHOSBOUCRAA / OCP stages") at commit `eec2d94` (2026-10-11), after the audit described in §8. Production checks dated 2026-10-12.
 
-> **Update:** sections 1–7 describe the system **before** the rebuild on branch `rag-rebuild`. What changed, and the status of every issue below, is in [§ 8](#8-status-after-the-rebuild).
+> This document replaces the pre-rebuild analysis. The old version, which described the full-text-only stack and the Python RAG, is still in git: `git show 1d2ff23:RAG_ANALYSIS.md`. The version written just before the audit (commit `a564ac3`) is in the history of this file.
 
 ## TL;DR
 
-There are **two independent RAG implementations** in the repo:
+There is **one** RAG implementation: TypeScript serverless functions in `netlify/functions`, backed by Supabase Postgres. The Python RAG (FastAPI, Celery, pgvector) was deleted on 2026-10-03 (commit `0c9c34a`).
 
-| | **Serverless stack (live)** | **Python backend (legacy / parallel)** |
-|---|---|---|
-| Where | `netlify/functions/` + `supabase/migrations/` | `backend/app/services/rag/` + `backend/alembic/` |
-| Called by the frontend? | **Yes**: `frontend/src/api/chat.ts` → `/api/assistant/chat` | **No**: nothing in `frontend/src` calls `/api/v1/assistant/query` |
-| Retrieval | Postgres **full-text search** (`tsvector`, `ts_rank_cd`) + trigram name matching. **No embeddings.** | **pgvector** cosine search over `sentence-transformers` embeddings |
-| Generation | Tool-calling **agent** on Groq (`openai/gpt-oss-120b`), streamed over SSE | One-shot LangChain prompt (Mistral `mistral-small-latest` / OpenAI `gpt-4o-mini`), with a template fallback |
-| Routing | The LLM picks tools itself, after a scope filter (`gpt-oss-20b`) | Regex keyword intent classifier, with an LLM tiebreak |
-| Ingestion | Synchronous, inside the HTTP request, through the `replace_document_chunks` RPC | Asynchronous Celery task: MinIO → chunk → embed → insert |
+**Scope.** Since commit `79db5dd` the assistant covers candidates, CVs, offers, assignments and bookings. **Internship policy is no longer part of the product**: the knowledge base holds CVs (`cv`) and other documents about candidates (`other`, such as interview reports). A policy question is refused as off-topic.
 
-The two stacks define **incompatible `document_chunks` schemas** and use **non-comparable `similarity` scales**, so they cannot share one database.
+**How a document gets in.**
+- It is uploaded and its text extracted page by page.
+- It is cut into chunks of about 900 characters. Every chunk's heading carries the **document title and its section**, for example "YASMINE EL AMRANI › COMPÉTENCES TECHNIQUES".
+- The chunks are stored atomically in Postgres.
+- A background function then embeds them with **Mistral `mistral-embed`** (1024-d).
+
+**How a question gets answered.**
+- A scope filter screens the question first. Greetings and "what can you do?" get a fixed reply with no model call.
+- A **Groq `gpt-oss-120b`** agent then picks its tools.
+  - Document search is **hybrid**: Postgres full-text ∪ pgvector cosine, fused with Reciprocal Rank Fusion inside one SQL function. Neighbouring chunks from the same page are merged into one passage.
+  - Candidate search is full-text plus name trigrams.
+- The answer streams to the browser over SSE, with the sources attached. Every fact taken from a document ends with "(document, p. N)".
+
+**Production state** (checked 2026-10-12):
+- Vercel. Builds started by a Git push are cancelled, so deployment goes through `vercel --prod`. `/api/health` doesn't report a version, so whether `eec2d94` is live has to be checked in the Vercel dashboard.
+- Migrations 0019 and **0020** are applied: the `doc_type` constraint is `('cv', 'other')` with default `'other'`.
+- `MISTRAL_API_KEY` is set for **Production only**, so Preview deployments run full-text search only. The 7 chunks in the base are all embedded.
+- The knowledge base holds **one CV (7 chunks)**, uploaded on 2026-10-11 at 09:14 UTC. That is before the new chunking, so its headings don't carry the document title. **Re-upload it** once `eec2d94` is deployed.
+
+**Most important findings.**
+- Of the audit (§8): chunks lost their document's identity, and neighbouring chunks carrying the rest of an answer were thrown away. Together these explained most wrong "not found" answers.
+- Still open: Groq's **daily** token quota (problem #2). Also still open: the HNSW index is never used by `rag_search_chunks` (problem #1).
 
 ---
 
@@ -25,306 +39,477 @@ The two stacks define **incompatible `document_chunks` schemas** and use **non-c
 
 ```mermaid
 flowchart TD
-  subgraph FE["Frontend (React / Vite)"]
-    AP[AssistantPage.tsx] -->|SSE POST /api/assistant/chat| CHAT
-    AP -->|GET/POST/DELETE /api/assistant/documents| DOCS
-    AP -->|GET /api/assistant/conversations| CONV
+  subgraph FE["Frontend (React)"]
+    AP["AssistantPage.tsx"] -->|"POST /api/assistant/chat (SSE)"| CHAT
+    AP -->|"GET/POST/DELETE /api/assistant/documents"| DOCS
+    AP -->|"GET /api/assistant/conversations"| CONV
   end
 
-  subgraph NF["Netlify Functions (live stack)"]
-    CHAT[assistant.ts handleChat] --> RL[checkRateLimit 60/h]
-    RL --> HIST[conversations.ts getHistory + sanitizeHistory]
-    HIST --> SCOPE[scope.ts classifyScope<br/>fast-path / regex backstop / gpt-oss-20b]
-    SCOPE -->|off_topic / discriminatory| REF[refusalStream]
-    SCOPE -->|in| AGENT[agent.ts runAgent<br/>gpt-oss-120b, up to 4 tool rounds]
-    AGENT --> T1[search_candidates]
-    AGENT --> T2[rank_candidates]
-    AGENT --> T3[search_documents]
-    AGENT --> T4[explain_assignment_score]
-    AGENT --> T5[list_offers / list_bookings]
-    T1 --> RC[rag.ts retrieveCandidates]
-    T3 --> RD[rag.ts retrieveDocChunks]
-    T4 --> SB[rag.ts getScoreBreakdown]
-    T2 --> RK[ranking.ts rankApplicants<br/>db.ts loaders]
-    DOCS --> UP[handleUpload → cv.ts extractCvText<br/>→ rag.ts chunkText → ingestDocumentText]
+  subgraph API["Serverless functions (Vercel in prod, Netlify-compatible)"]
+    CHAT["assistant.ts handleChat"] --> RL["checkRateLimit 60/h"]
+    RL --> HIST["conversations.ts getHistory + contextNote"]
+    HIST --> SCOPE["scope.ts classifyScope"]
+    SCOPE -->|"small_talk / off_topic / discriminatory"| CAN["cannedStream (fixed reply)"]
+    SCOPE -->|"in"| AGENT["rag/agent.ts runAgent (gpt-oss-120b)"]
+    AGENT --> TOOLS["rag/tools.ts runTool (6 tools, parallel per round)"]
+    TOOLS --> RD["rag/retrieval.ts retrieveDocChunks + mergeAdjacent"]
+    TOOLS --> RC["rag/candidates.ts retrieveCandidates / getScoreBreakdown"]
+    TOOLS --> RK["ranking.ts rankApplicants"]
+    RD --> EQ["rag/embeddings.ts embedQuery (4 s, null on failure)"]
+    DOCS --> UP["handleUpload"] --> ING["rag/ingest.ts ingestDocument"]
+    ING --> EX["rag/extract.ts extractDocument"] --> CH["rag/chunking.ts chunkPages(pages, documentTitle)"]
+    UP -. "triggerEmbedding (fire and forget)" .-> BG["rag-embed-background.ts embedPending"]
+    BG --> ET["rag/embeddings.ts embedTexts (batches of 32)"]
   end
 
-  subgraph PG["Supabase Postgres"]
-    RC -->|rpc search_candidates / _diag| CAND[(candidates.search_vector<br/>GIN + pg_trgm)]
-    RD -->|rpc search_document_chunks| DC[(document_chunks.search_vector<br/>GIN, doc_type)]
-    UP -->|rpc replace_document_chunks| DC
-    SB --> ASG[(assignments.score_breakdown)]
-    RQ[rag_tsquery: OR of FR+EN lexemes, -negation] -.-> RC & RD
+  subgraph DB["Supabase Postgres (migrations 0019 + 0020)"]
+    CH -->|"rag_replace_document"| T[("rag_documents / rag_chunks")]
+    BG -->|"rag_pending_chunks / rag_set_embeddings"| T
+    RD -->|"rag_search_chunks: FTS CTE + vector CTE, RRF"| T
+    RC -->|"search_candidates (index pre-filter)"| CAND[("candidates")]
   end
 
-  subgraph PY["Python backend (not used by the UI)"]
-    Q[POST /api/v1/assistant/query] --> ROUTER[router.py classify_intent]
-    ROUTER --> PR[retriever.py<br/>pgvector cosine]
-    PR --> GEN[generation.py<br/>LangChain LLM or template]
-    PD[POST /api/v1/assistant/documents] --> MINIO[(MinIO)] --> CEL[Celery ingest_kb_document]
-    CEL --> ING[ingest.py RecursiveCharacterTextSplitter<br/>+ embed_batch MiniLM-384]
-    ING --> PDC[(document_chunks.embedding<br/>ivfflat cosine)]
-    PR --> PDC
-  end
+  ET --> MISTRAL["Mistral embeddings API"]
+  EQ --> MISTRAL
+  AGENT --> GROQ["Groq chat API"]
+  SCOPE --> GROQ
 ```
 
 ---
 
 ## 2. File-by-file table
 
-### Serverless stack (live)
-
-| Path | Role | Key functions / objects |
-|---|---|---|
-| `netlify/functions/assistant.ts` | HTTP entry point: chat over SSE, knowledge-base CRUD, conversation reads | `handleChat`, `handleUpload`, `listDocuments`, `deleteDocument`, `checkRateLimit`, `config.path` |
-| `netlify/functions/_shared/rag.ts` | Retrieval layer and ingestion (chunking) | `retrieveCandidates`, `candidateEmptyAnswer`, `getScoreBreakdown`, `retrieveDocChunks`, `dedupeAdjacent`, `listDocumentCounts`, `chunkText`, `ingestDocumentText`, `detectLanguage`, `MIN_RELEVANCE=0.02`, `MIN_CANDIDATE_RELEVANCE=0.06` |
-| `netlify/functions/_shared/agent.ts` | Tool-calling agent loop, system prompt, tool schemas, context budgeting | `SYSTEM`, `TOOLS`, `runTool`, `runAgent`, `toolResultContent`, `sanitizeHistory`, `MAX_TOOL_ROUNDS=4`, `MAX_HISTORY=12`, `MAX_TOOL_RESULT_CHARS=8000` |
-| `netlify/functions/_shared/scope.ts` | Pre-agent scope and fairness filter | `classifyScope`, `isDiscriminatoryRequest`, `classifierRequestBody`, `refusalStream`, `REFUSALS` |
-| `netlify/functions/_shared/groq.ts` | Groq client and model ids (plus CV extraction) | `groqClient`, `groqEnabled`, `ASSISTANT_MODEL`, `EXTRACT_MODEL`, `extractProfile` |
-| `netlify/functions/_shared/conversations.ts` | Server-side conversation persistence (the history is never trusted from the client) | `resolveConversation`, `saveMessage`, `getHistory(limit=12)`, `listConversations`, `getConversation` |
-| `netlify/functions/_shared/cv.ts` | Text extraction for PDF, DOCX and TXT (also used for KB documents) | `extractCvText` (unpdf / mammoth / TextDecoder) |
-| `netlify/functions/_shared/ranking.ts` + `db.ts` + `scoring.ts` | Deterministic candidate ranking that backs `rank_candidates`. It is not retrieval. | `buildFieldProfile`, `rankApplicants`, `loadApplicantPool`, `loadOpenOffersWithSkills`, `compositeScore` |
-| `netlify/functions/_shared/supabase.ts` | Service-role Supabase client (bypasses RLS) | `admin()` |
-| `netlify/functions/_shared/eval/assistant-scope.json` | Labelled eval set for the **scope filter** only | none |
-| `frontend/src/api/chat.ts`, `api/hooks.ts`, `pages/AssistantPage.tsx`, `components/AssistantMessage.tsx` | SSE client, KB management UI, rendering of answers and sources | `streamChat`, KB hooks |
-
-### SQL (Supabase migrations)
-
-| Migration | What it contributes to RAG |
-|---|---|
-| `0007_rag_knowledge_base.sql` | `document_chunks` table, French `tsvector`, GIN index, first `search_document_chunks` |
-| `0008_bilingual_search.sql` | FR and EN vectors concatenated, FR∥EN queries |
-| `0010_fts_or_semantics.sql` | AND changed to OR by rewriting text (this broke negation; fixed in 0013) |
-| `0011_assistant_conversations.sql` | `assistant_conversations` and `assistant_messages` |
-| `0013_rag_query_fix.sql` | `rag_tsquery()` (OR of lexemes, `-term` exclusions), weighted vectors (FR=A, EN=B), absolute `ts_rank_cd(...,32)`, `list_document_chunk_counts` |
-| `0014_candidate_search.sql` | `candidates.skills_text` with refresh triggers, `pg_trgm`, `rag_like_escape`, name trigram index |
-| `0015_ingestion_atomic.sql` | `replace_document_chunks` (delete and insert in a single transaction) |
-| `0016` / `0017_candidate_relevance.sql` | Weighted candidate `search_vector`, `rag_name_core` (strips El/Ben/Aït…), current `search_candidates` and `search_candidates_diag` with floors (`name_match_min=0.72`, `relevance_min=0.06`) |
-| `0018_document_type.sql` | `doc_type ∈ {policy, cv, other}`, filtered `search_document_chunks(q, top_k, p_doc_type)`, new signatures for `replace_document_chunks` and `list_document_chunk_counts` |
-
-### Python backend (parallel / legacy)
+### Serverless entry points
 
 | Path | Role | Key functions |
 |---|---|---|
-| `backend/app/api/v1/assistant.py` | FastAPI routes | `assistant_query`, `ingest_knowledge_document`, `list_knowledge_documents`, `delete_knowledge_document` |
-| `backend/app/services/rag/router.py` | Intent classification and pipeline | `classify_intent`, `answer_query` |
-| `backend/app/services/rag/retriever.py` | pgvector retrieval | `retrieve_candidates`, `retrieve_doc_chunks`, `get_score_breakdown`, `_cosine_similarity` |
-| `backend/app/services/rag/generation.py` | Prompt templates, LLM call, deterministic fallback | `generate_answer`, `_PROMPTS`, `_context_json`, `_template_answer` |
-| `backend/app/services/rag/ingest.py` | Chunking and embedding | `chunk_text` (LangChain splitter), `ingest_document` |
-| `backend/app/services/rag/language.py` | FR/EN detection (mirrors the TypeScript version) | `detect_language` |
-| `backend/app/services/nlp/embeddings.py` | SentenceTransformer singleton and Redis cache | `embed_text`, `embed_batch`, `embed_text_cached` |
-| `backend/app/services/nlp/llm.py` | LangChain chat-model factory | `is_enabled`, `build_llm`, `LLMConfigurationError` |
-| `backend/app/tasks/rag_ingestion.py` | Celery ingestion task | `ingest_kb_document` |
-| `backend/app/models/document_chunk.py`, `alembic/versions/0004_*`, `0005_*` | ORM model, table, ivfflat indexes | `DocumentChunk` |
-| `backend/app/schemas/assistant.py` | Pydantic I/O | `AssistantQueryRequest`, `AssistantQueryResponse`, `IngestAccepted` |
+| `netlify/functions/assistant.ts` | HTTP routes: streamed chat, knowledge-base CRUD, conversation reads | `handleChat` (l.76), `handleUpload` (l.161), `listDocuments` (l.208), `deleteDocument` (l.216), `checkRateLimit` (l.49), `config.path` |
+| `netlify/functions/rag-embed-background.ts` | Background function that embeds pending chunks. Idempotent, takes no arguments | default handler, calling `embedPending` |
+| `vercel-src/handler.ts` | Vercel catch-all router that reuses the Netlify handlers. Routes `/api/assistant/*` and `/api/rag-embed-background`, and exposes `/api/health` (reports `hasMistralKey`) | `routes` |
+
+### Core module `netlify/functions/_shared/rag/`
+
+| Path | Role | Key functions / constants |
+|---|---|---|
+| `index.ts` | Public barrel; everything outside the module imports from here | re-exports |
+| `config.ts` | Every tunable value, in one place | `CHUNK_SIZE`, `CHUNK_OVERLAP`, `EMBED_*`, `DEFAULT_TOP_K`, `MAX_TOP_K`, `RRF_K`, `MIN_FTS_RANK`, `MIN_COSINE`, `MIN_CANDIDATE_RELEVANCE`, `NAME_MATCH_MIN`, `MAX_TOOL_*`, `MAX_UPLOAD_BYTES`, `ALLOWED_EXTENSIONS` |
+| `types.ts` | Shapes shared with the frontend and the SSE stream | `ChunkSource`, `CandidateSource`, `ExplanationSource`, `KnowledgeDocument`, `SearchRow`, `DocType` (`"cv" \| "other"`), `isDocType` |
+| `extract.ts` | Text extraction: PDF page by page (unpdf), DOCX (mammoth), plain text. Strips NUL bytes | `extractDocument` (l.15) |
+| `chunking.ts` | Chunking by separator priority, cut before a heading line, overlap aligned to a word or sentence boundary, heading propagation, document title in every heading | `chunkPages` (l.184), `documentTitle` (l.70), `splitRanges` (l.124), `headingOf` (l.35), `normalizeText`, `chunkText` |
+| `embeddings.ts` | Mistral client using plain `fetch`, with batching, retries and timeouts | `embedTexts` (l.83), `embedQuery` (l.98), `embeddingsEnabled`, `embeddingInput`, `EmbeddingError` |
+| `store.ts` | Storage interface and its Supabase RPC implementation; swappable for tests and the evaluation | `RagStore`, `supabaseStore` (l.54), `getStore`, `setStore`, `DocumentExistsError` |
+| `ingest.ts` | Upload pipeline and background embedding loop | `ingestDocument` (l.56), `ingestPages` (l.39), `embedPending` (l.73), `guessDocType` (l.32, default `other`), `EmptyDocumentError` |
+| `retrieval.ts` | Hybrid document retrieval: top-k chunks, then neighbouring chunks of the same page merged into passages | `retrieveDocChunks` (l.93), `mergeAdjacent` (l.46), `relevance` (l.27) |
+| `candidates.ts` | Candidate search, empty-result diagnostic, assignment-score explanation | `retrieveCandidates` (l.38), `candidateEmptyAnswer` (l.112), `getScoreBreakdown` (l.150) |
+| `context.ts` | Fits a tool payload into the context budget, keeping the passage around the query terms | `toolResultContent` (l.62), `focusText` (l.29) |
+| `prompt.ts` | System prompt and tool schemas | `SYSTEM` (l.8), `FINAL_ROUND_INSTRUCTION` (l.84), `TOOLS` (l.88) |
+| `tools.ts` | Runs the tools; validates model arguments; retries an empty type-filtered document search without the filter | `runTool` (l.196), `searchDocumentsTool` (l.99), `clampInt`, `optionalNumber` |
+| `agent.ts` | Agent loop: streaming, parallel tools, forced final round, citation check, provider failures (429) | `runAgent` (l.124), `sanitizeHistory` (l.53), `unverifiedCitations` (l.98), `FALLBACK_ANSWER`, `QUOTA_ANSWER` |
+| `debug.ts` | Diagnostic traces behind `RAG_DEBUG=1`, off by default | `ragDebug`, `ragDebugEnabled`, `clip` |
+| `language.ts` | FR/EN detection for user-facing messages | `detectLanguage` (l.18) |
+
+### Collaborators outside the module
+
+| Path | Role | Key functions |
+|---|---|---|
+| `_shared/scope.ts` | Pre-agent scope filter in three layers: fast path (small talk and "what can you do?" → fixed reply), deterministic backstop, gpt-oss-20b classifier. Fails open | `classifyScope` (l.162), `smallTalkReply` (l.69), `isDiscriminatoryRequest` (l.101), `cannedStream` (l.204), `REFUSALS` |
+| `_shared/conversations.ts` | Conversation storage. Replays history from the database, adding a compact `[contexte : …]` note per assistant turn | `getHistory` (l.74), `contextNote` (l.114), `saveMessage`, `resolveConversation` |
+| `_shared/groq.ts` | Groq client and model names | `ASSISTANT_MODEL`, `EXTRACT_MODEL`, `groqClient`, `groqEnabled` |
+| `_shared/trigger-analysis.ts` | Fire-and-forget call to a background function, works on Netlify and Vercel | `triggerBackground`, `triggerEmbedding` |
+| `_shared/ranking.ts`, `_shared/db.ts` | Deterministic ranking behind the `rank_candidates` tool | `buildFieldProfile`, `rankApplicants`, `loadApplicantPool` |
+| `scripts/eval-rag.ts` | End-to-end evaluation on a labelled set (`npm run eval:rag`), see §8.3 | `main`, `grade`, `compare` |
+| `scripts/eval-scope.ts` | Real scope-classifier evaluation (`npm run eval:scope`) | `main` |
+| `scripts/rag-demo.ts` | Manual end-to-end run against the real services (`npm run rag:demo`), on the CV fixture | `main` |
+
+### SQL (`supabase/migrations/`)
+
+| Object | Defined in | Role |
+|---|---|---|
+| `rag_documents`, `rag_chunks` | 0019 (l.116, l.125) | One row per document (unique name, `doc_type` ∈ {cv, other} since 0020); chunks with `page`, `heading`, a generated `search_vector` (FR=A, EN=B, heading included) and `embedding vector(1024)` |
+| `rag_documents_doc_type_check` | 0020 | `doc_type in ('cv', 'other')`, default `'other'`; existing `policy` rows become `other` |
+| `ix_rag_chunks_fts` (GIN), `ix_rag_chunks_embedding` (HNSW cosine), `ix_rag_chunks_pending` (partial) | 0019 (l.145–151) | Indexes |
+| `rag_tsquery(q)` | 0019 (l.42), first introduced in 0013 | OR of lexemes; drops stopwords and question words in both languages; keeps `-term` exclusions |
+| `rag_replace_document` | 0019 (l.160), redefined in 0020 (l.23) | Atomic replace; raises `23505` when the name exists and `p_replace` is false; accepts only `cv` / `other` |
+| `rag_pending_chunks`, `rag_set_embeddings` | 0019 (l.220, l.235) | Embedding backlog |
+| `rag_search_chunks` | 0019 (l.259) | Hybrid search: FTS CTE and vector CTE, full outer join, RRF score |
+| `rag_list_documents`, `rag_delete_document` | 0019 (l.342, l.359) | Knowledge-base management |
+| `search_candidates`, `search_candidates_diag` | 0019 (l.393, l.491) | Candidate search with an index pre-filter; question built from `rag_name_core(q)` |
+| `rag_name_core`, `rag_like_escape` | 0017 (l.33), 0014 (l.146) | Older helpers still in use |
+
+### Tests
+
+`_shared/rag/__tests__/`:
+- `sql.test.ts`: runs all real migrations on PGlite with pgvector and pg_trgm. It checks:
+  - `search_candidates` against the old full-scan version as a reference;
+  - replaying 0019 + 0020;
+  - the `policy` → `other` conversion done by 0020.
+- `e2e.test.ts`: offline flow on the CV fixture with a deterministic embedder.
+- Unit tests for chunking, embeddings, retrieval, context, tools, agent, candidates and conversations.
+- `migration-sync.test.ts`.
+
+Also `netlify/functions/assistant.test.ts` and `_shared/scope.test.ts`. The functions suite has 22 files and **335 tests**, all passing on 2026-10-11; the frontend has 30.
+
+Fixtures in `_shared/rag/__fixtures__/` (synthetic, no real person):
+- three CVs: FR and EN, an Arabic name, a skills table, a section spanning two chunks, and a planted prompt injection;
+- an interview-jury report.
 
 ---
 
-## 3. Data flow (live stack)
+## 3. Data flow
 
-### 3.1 Ingestion: document → chunks → store
-1. A staff member runs `POST /api/assistant/documents` (multipart: `file`, optional `title`, `doc_type`, `replace`).
-2. Validation: `.pdf`, `.docx` or `.txt` by **file name**, at most 10 MB. `doc_type` is either explicit or guessed from a `cv|resume|curriculum` regex on the name. If a document with the same `source_document` already exists, the request gets a 409 unless `replace=true`.
-3. `extractCvText` uses `unpdf` for PDF, `mammoth` for DOCX and UTF-8 decoding otherwise. There is no OCR.
-4. `chunkText`: **1600 chars, 200 overlap**. The splitter looks for separators in priority order (`\n\n`, `. `, `\n`, space) and only accepts a cut point past half the window.
-5. `replace_document_chunks(p_source_document, p_chunks jsonb, p_doc_type)` deletes and re-inserts the chunks in one transaction.
-6. **No embedding step.** Postgres computes `search_vector` as a generated column: `setweight(to_tsvector('french'),'A') || setweight(to_tsvector('english'),'B')`, indexed with GIN.
+### 3.1 Ingestion: document → chunks → stored
 
-### 3.2 Query → retrieve → prompt → answer
-1. `POST /api/assistant/chat {message, conversation_id}` checks `requireStaff`, then the rate limit (60 user messages per hour).
-2. The history is re-read from the database (last 12 messages) and passed through `sanitizeHistory` (12 messages, 4000 chars each). The user message is saved.
-3. `classifyScope`:
-   - a small-talk regex returns `in`;
-   - a selection verb combined with a protected-attribute regex returns `discriminatory`;
-   - otherwise `gpt-oss-20b` runs in JSON mode at temperature 0 with a 4 s timeout.
-   If the classifier fails, the request goes through anyway (**fail-open**).
-4. `runAgent`: system prompt `SYSTEM` + history goes to `gpt-oss-120b` (temperature 0.2, `tool_choice:auto`, streamed). Each round the model may call tools. In round 5 the tools are removed to force an answer.
-5. Tools:
-   - `search_documents` → RPC `search_document_chunks(q, top_k≤20, p_doc_type)`. `rag_tsquery(q)` builds an OR of the French and English lexemes, `-term` excludes, and the rank is `ts_rank_cd({0.1,0.2,0.4,1.0}, vec, q, 32)`, which lies in [0,1). The TypeScript side then drops results below `0.02` and runs `dedupeAdjacent` (removes neighbouring chunks from the same document). Results are tagged `contenu_non_fiable: true` (untrusted content).
-   - `search_candidates` → RPC `search_candidates`: `greatest(text_rank, name_sim if ≥0.72)` with a floor of 0.06, applied in SQL and again in TypeScript. If nothing matches, `search_candidates_diag` explains why, and the tool tells the model to try `search_documents`.
-   - `rank_candidates` → in-memory `compositeScore` ranking (the same engine as the assignment page).
-   - `explain_assignment_score`, `list_offers`, `list_bookings` → plain Supabase reads.
-6. Before going back to the model, each tool payload is serialised through `toolResultContent` with a budget of **8000 chars**. The function first shortens the text of each item (900, then 600, 400, 250 chars) and then drops items from the end.
-7. The browser receives SSE events `conversation`, `tool`, `delta`, `sources`, `done` and `error`. The final answer text, tool names and sources are saved to `assistant_messages`.
+1. **Upload.** `POST /api/assistant/documents`, multipart with `file` and optional `title`, `doc_type` and `replace`.
+   - Requests whose `content-length` is over 10 MB (plus 64 KB of multipart margin) are refused **before** `formData()` reads the body.
+   - Then the extension check (`pdf|docx|txt|md`) and a second size check on `file.size`.
+   - Without `doc_type`, `guessDocType` picks `cv` when the name matches cv/resume/curriculum, and `other` otherwise.
+2. **Extraction.** `extractDocument` returns `{page, text}[]`. PDFs give one entry per page; DOCX and text files give a single entry with `page: null`. NUL bytes are removed, since Postgres rejects them.
+3. **Chunking.** `chunkPages(pages, documentTitle(name, pages))` normalises whitespace and calls `splitRanges` (900 characters).
+   - **Cut point.** When a heading line falls in the second half of the window, the chunk is cut just before it, and the next chunk starts exactly on the heading, with no overlap across a section boundary. Otherwise a cut point is chosen by separator priority: paragraph, line, sentence, `; `, `, `, space. It must fall past half the window.
+   - **Overlap.** Without a heading cut, the next chunk starts up to 150 characters earlier, on a sentence boundary when the overlap zone has one, otherwise on a word boundary.
+   - **Heading.** Each chunk carries its page and the heading in force, which can be:
+     - a markdown heading;
+     - an "Article/Chapitre" line;
+     - a section number of one or two digits per level followed by a letter, such as `2.1 Conditions`;
+     - a short ALL-CAPS line without digits.
 
-### 3.3 Python flow (for reference)
-`/assistant/query` calls `classify_intent`, which uses regex scores, then an LLM tiebreak, then defaults to `policy_qa`. Depending on the intent it then calls `retrieve_candidates` (cosine over `candidates.embedding` plus SQL filters), `get_score_breakdown` or `retrieve_doc_chunks` (cosine top-k, **no threshold**). `generate_answer` fills one of three French prompt templates with JSON context (at most 12 000 chars). Without an LLM it uses a deterministic template.
+     A heading carries over to the next page.
+   - **Document title.** The title is prefixed to every heading: "Title › Section", or just the title when the section repeats it. It is the first line when that looks like a title (≤ 90 characters, not "CV"/"Curriculum vitae", no e-mail, few digits), and the file name without its extension otherwise.
+4. **Storage.** `rag_replace_document` runs in one transaction:
+   - it locks or creates the `rag_documents` row, deletes the old chunks, inserts the new ones with indexes renumbered from 0 and empty chunks dropped, and updates `chunk_count`;
+   - the existence check happens inside the transaction, so two concurrent uploads under the same name can't both win. One gets `23505`, which the API turns into a 409.
+5. **Response.** `{source_document, doc_type, chunks, embeddings: "pending"|"disabled", status: "ingested"}`. When the status is `pending`, `triggerEmbedding(req)` calls the background function without waiting for it.
+
+### 3.2 Embedding (background)
+
+`embedPending` loops until nothing is pending, or up to 5000 chunks:
+- `rag_pending_chunks(128)` returns chunks with a null embedding.
+- `embedTexts` embeds `heading + "\n" + content` (so the document title is in every vector), 32 texts per Mistral call.
+  - 429 and 5xx responses get 2 retries with backoff, under a 15 s timeout.
+  - A short batch or a wrong dimension raises an error instead of saving misaligned vectors.
+- `rag_set_embeddings` writes the vectors and `embedded_at`.
+
+The loop stops early if nothing was written, for example because the chunks were deleted in the meantime. Without `MISTRAL_API_KEY`, nothing happens and the chunks stay searchable by full text only.
+
+### 3.3 Query: question → retrieve → prompt → answer
+
+1. `POST /api/assistant/chat {message, conversation_id?}` checks `requireStaff`, then the rate limit of 60 user messages per hour.
+2. **History.** `getHistory` reads the last 12 messages from the database, never from the browser. Assistant turns get a `contextNote` appended, for example `[contexte : candidats — X (#12) ; documents — cv-x.pdf p.1]`. `sanitizeHistory` then caps the list at 12 messages of 4000 characters each.
+3. **Scope.** `classifyScope` has four outcomes:
+   - small talk and capability questions ("bonjour", "merci", "que peux-tu faire ?", "help") get `small_talk`: a fixed FR or EN reply that lists what the assistant does, with no model call;
+   - a selection verb combined with a protected attribute is refused as `discriminatory`;
+   - otherwise `gpt-oss-20b` classifies the question in JSON at temperature 0 (low reasoning effort, 4 s timeout). Policy questions are `off_topic`; questions on a candidate's specific data are `in`.
+
+   `cannedStream` streams the fixed reply or refusal. If the classifier itself fails, the question goes through (fail open).
+4. **Agent.** `runAgent` sends `SYSTEM` and the history to `gpt-oss-120b` (temperature 0.2, streaming, `tool_choice: auto`).
+   - The model can call tools for up to 4 rounds. In a fifth, final round the tools are removed and `FINAL_ROUND_INSTRUCTION` is added.
+   - Tool calls within one round run in parallel (`Promise.all`).
+   - A provider failure, whether on the call or mid-stream, becomes `FALLBACK_ANSWER`, or `QUOTA_ANSWER` on a 429. The raw provider error never reaches the browser.
+5. **`search_documents`** calls `retrieveDocChunks(query, topK≤20)`. The model is given no type filter: the schema exposes only `query` and `top_k`.
+   - `embedQuery` gets a vector, with a 4 s timeout and no retry. It returns `null` without a key or when the call fails, which means full-text only.
+   - It calls `rag_search_chunks(q, q_embedding, top_k, doc_type, MIN_FTS_RANK, MIN_COSINE, RRF_K)`:
+     - **FTS CTE:** `search_vector @@ rag_tsquery(q)`, ranked with `ts_rank_cd({0.1,0.2,0.4,1.0}, …, 32)`, which falls in [0, 1). Ranks under 0.02 are dropped.
+     - **Vector CTE:** `1 - (embedding <=> q)`. Cosines under 0.75 are dropped.
+     - The two lists are merged with a full outer join, each chunk scoring `Σ 1/(60 + rank)`, ordered by that score.
+   - `mergeAdjacent` joins consecutive chunks of the same document **and page** into one passage, without repeating their overlap.
+     - The passage keeps the position of its best-ranked chunk, and the page, heading and index of its first chunk.
+     - top-k still counts chunks, so the text volume matches what `MAX_TOOL_RESULT_CHARS` was sized for.
+   - The displayed `similarity` is `max(fts_rank, (cos − 0.75) / 0.25)`, clamped to [0, 1].
+   - The extracts are tagged `contenu_non_fiable: true` before reaching the model.
+   - When nothing is found, the tool says whether the knowledge base is empty (`countChunks`). If a `doc_type` argument was passed anyway and the search came back empty, the tool retries once without it (`filtre_doc_type_ignore`).
+6. **Other tools:**
+   - `search_candidates`: the `search_candidates` RPC with SQL filters, floors of 0.06 and 0.72, and a diagnostic when empty;
+   - `rank_candidates`: deterministic `compositeScore` ranking;
+   - `explain_assignment_score`;
+   - `list_offers` (status checked against a whitelist);
+   - `list_bookings` (ISO dates checked).
+7. **Context budget.** `toolResultContent` keeps every tool result under 8000 characters, as valid JSON. It first shortens the text fields around the query terms (`focusText`: 700, then 500, 350, 250 characters), then drops items from the end.
+8. **Answer.** The browser receives SSE events:
+   - `conversation` first;
+   - `tool` each time a tool is called;
+   - `delta` for each piece of the answer;
+   - `sources`, deduplicated by type, id, document and chunk;
+   - `done` at the end.
+
+   When the final answer names a file that neither this turn's sources nor the earlier assistant turns mention, `unverifiedCitations` appends a warning `delta`. The check normalises Unicode hyphens and never reads a leading parenthesis as part of a name. The answer, tool names and sources are saved to `assistant_messages`.
 
 ---
 
 ## 4. Key parameters
 
-| Parameter | Serverless | Python |
+| Parameter | Value | Where |
 |---|---|---|
-| Chunk size / overlap | 1600 / 200 chars (`rag.ts`) | 1600 / 200 chars (`ingest.py`, LangChain `RecursiveCharacterTextSplitter`) |
-| Embedding model | none | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, 384-d, normalised |
-| Similarity metric | `ts_rank_cd` normalisation 32, which equals rank/(rank+1); `word_similarity` (trigram) for names | Cosine distance (`<=>`), displayed as `1 - d/2` (so unrelated vectors show **0.5**) |
-| Index | GIN on `search_vector` (chunks and candidates), trigram GIN on candidate name | ivfflat `vector_cosine_ops`, `lists=100`, `ivfflat.probes=10` |
-| top-k | default 5, tool clamp 1–20, SQL clamp 1–20 | default 5, schema 1–20 |
-| Relevance floor | chunks 0.02 (TypeScript only); candidates 0.06 (SQL and TypeScript) plus a 0.72 name-match threshold | none |
-| Reranking | none (`dedupeAdjacent` only) | none |
-| LLM | `openai/gpt-oss-120b` (agent, T=0.2), `openai/gpt-oss-20b` (scope + CV extraction, T=0) via Groq | `mistral-small-latest` or `gpt-4o-mini`, T=0 |
-| Context budget | 8000 chars per tool result; 12 history messages × 4000 chars | 12 000 chars of JSON |
-| Agent bounds | 4 tool rounds plus 1 forced answer (≤5 LLM calls per message); 60 messages per user per hour | n/a |
+| Chunk size / overlap | 900 / 150 characters, cut at a sentence or word boundary; no overlap across a heading | `config.ts` l.16–17 |
+| Chunk heading | "Document title › section" | `chunking.ts` `documentTitle`, `label` |
+| Embedding model | `mistral-embed`, 1024-d, batches of 32, 2 retries, 15 s timeout (4 s for the query) | `config.ts` l.21–30 |
+| Similarity metric | Cosine (`vector_cosine_ops`, `<=>`); full-text `ts_rank_cd` with normalisation 32 | 0019 l.149, l.285–310 |
+| Fusion | RRF, k = 60, over top-k chunks (no wider pool since `082e76a`) | `config.ts` l.37, 0019 l.259 |
+| Floors | `MIN_FTS_RANK` 0.02, `MIN_COSINE` 0.75 (not yet calibrated) | `config.ts` l.40, l.46 |
+| top-k | default 5, max 20 (tool clamp 1–20); neighbouring chunks merged afterwards | `config.ts` l.34–35 |
+| Candidate floors | relevance 0.06, name match 0.72 (in SQL and TypeScript, kept equal by a test) | `config.ts` l.51–52, 0019 `search_candidates` |
+| Agent | 4 tool rounds + 1 forced final round, temperature 0.2, history 12 × 4000 characters, tool result ≤ 8000 characters | `config.ts` l.56–60 |
+| LLMs | `openai/gpt-oss-120b` (agent), `openai/gpt-oss-20b` (scope filter and CV extraction), via Groq. Daily quota on the current tier: 200,000 tokens for the 120b | `groq.ts` l.44–46 |
+| Upload | ≤ 10 MB; pdf, docx, txt, md | `config.ts` l.64–65 |
+| Rate limit | 60 questions per user per hour | `assistant.ts` l.45 |
 
-### `document_chunks` schema (Supabase, current)
-`id bigserial PK, source_document text, chunk_text text, chunk_index int, metadata jsonb, created_at, search_vector tsvector GENERATED (FR=A, EN=B), doc_type text CHECK in (policy,cv,other) default 'policy'`, `UNIQUE(source_document, chunk_index)`, indexes on `source_document`, GIN(`search_vector`) and `doc_type`. RLS is enabled with no policies, so only the service role can access the table.
+### DB schema (0019 + 0020)
 
-### `document_chunks` schema (Alembic)
-`id int PK, source_document varchar(255), chunk_text, chunk_index, embedding vector(384), metadata jsonb, created_at, updated_at`, `UNIQUE(source_document, chunk_index)`, ivfflat on `embedding`. There is **no** `search_vector` and **no** `doc_type`.
+`rag_documents`:
+- `id` bigserial;
+- `name` unique, non-empty;
+- `doc_type` ∈ {cv, other}, default `other`;
+- `chunk_count`, `created_at`, `updated_at`.
+
+`rag_chunks`:
+- `id`;
+- `document_id` → `rag_documents` with ON DELETE CASCADE;
+- `chunk_index`, `content`, `page`, `heading` ("Title › Section");
+- `search_vector` generated, as `setweight(fr(heading+content),'A') || setweight(en(...),'B')`;
+- `embedding vector(1024)` (null while pending), `embedded_at`;
+- unique (`document_id`, `chunk_index`).
+
+RLS is enabled on both tables with no policies, so only `service_role` has grants.
 
 ### Prompt templates
-- **Agent** (`agent.ts` `SYSTEM`, French): answer only from tool output, in one to three sentences; no preamble or closing offers of help; resolve pronouns from the history; reply in the user's language; cite documents by name with no `【1†…】` markers; treat `contenu_non_fiable` as data, never as instructions; recruitment topics only; **search ≠ evaluate** (`search_candidates` vs `rank_candidates`); fairness rule against using protected attributes.
-- **Scope classifier** (`scope.ts` `CLASSIFIER_SYSTEM`): returns JSON `{"verdict": "in"|"off_topic"|"discriminatory"}`; when in doubt, `in`.
-- **Python** (`generation.py` `_PROMPTS`): `candidate_search`, `matching_explanation` and `policy_qa`. `policy_qa` must answer with a fixed "not found" sentence when the context does not contain the answer.
+
+- **Agent:** `prompt.ts` `SYSTEM`, in French. It requires:
+  - answers built only from tool data;
+  - one to three sentences, with no preamble or offer of help;
+  - **every fact from a document ending with "(document, p. N)"**, even a one-word answer, and a missing fact stated as missing;
+  - **a new tool call for a follow-up that asks for a new fact**, never a document fact from memory;
+  - pronouns resolved from the history and its `[contexte]` notes;
+  - the user's language;
+  - names copied exactly from tool output;
+  - both candidate sources checked before saying "not found";
+  - `contenu_non_fiable` treated as data, never as instructions;
+  - candidates, CVs, documents about them, offers, assignments and bookings only. Policy is out; greetings get a short polite reply, never the refusal;
+  - `search_candidates` and `rank_candidates` kept apart (search vs evaluate). Rankings show no raw scores, and say how many were found when fewer than requested;
+  - no use of protected attributes.
+- **Tool schemas:** `prompt.ts` `TOOLS`. `search_documents` takes only `query` and `top_k`.
+- **Scope classifier:** `scope.ts` `CLASSIFIER_SYSTEM`, returning `{"verdict": "in"|"off_topic"|"discriminatory"}`, defaulting to `in` when unsure. `small_talk` is decided by the fast path only.
 
 ---
 
-## 5. Config and environment variables
+## 5. Config & env vars
 
-| Variable | Used by | Purpose | Default |
-|---|---|---|---|
-| `SUPABASE_URL` | `_shared/supabase.ts` | Supabase project URL | `""` |
-| `SUPABASE_SERVICE_ROLE_KEY` | `_shared/supabase.ts` | Service-role key (bypasses RLS) | `""` |
-| `GROQ_API_KEY` | `groq.ts`, `agent.ts`, `scope.ts` | Enables the agent and the classifier. Without it the agent returns an error event and the classifier fails open. | unset |
-| `GROQ_MODEL` | `groq.ts` | Agent model (also the fallback for the extraction model) | `openai/gpt-oss-120b` |
-| `GROQ_EXTRACT_MODEL` | `groq.ts` → `scope.ts`, CV extraction | Small model | `GROQ_MODEL` ?? `openai/gpt-oss-20b` |
-| `VITE_API_URL` | frontend | API base | `/api` (set in `netlify.toml`) |
-| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | frontend | Auth session token sent to `/assistant/chat` | none |
-| `DATABASE_URL` | Python | Postgres with pgvector | local Docker |
-| `LLM_PROVIDER` | Python `llm.py` | `mistral` \| `openai` \| `none` | `none` in `config.py` (`.env.example` sets `mistral`) |
-| `OPENAI_API_KEY`, `MISTRAL_API_KEY` | Python | LLM keys | `""` |
-| `EMBEDDING_MODEL`, `EMBEDDING_DIM` | Python | Embedding model and dimension | MiniLM-L12-v2, 384 |
-| `REDIS_CACHE_URL`, `EMBEDDING_CACHE_ENABLED`, `EMBEDDING_CACHE_TTL_SECONDS` | Python `embeddings.py` | Embedding cache | `redis://redis:6379/2`, `true`, 30 days |
-| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `MINIO_*` | Python ingestion | Async ingestion and document storage | see `.env.example` |
+| Variable | Read in | Purpose | Default | Vercel scope |
+|---|---|---|---|---|
+| `MISTRAL_API_KEY` | `rag/embeddings.ts` | Enables embeddings (ingestion and query). Without it, search is full-text only | unset | **Production only** |
+| `GROQ_API_KEY` | `groq.ts`, used by `agent.ts` and `scope.ts` | Agent and scope classifier. Without it the agent returns an error event and the classifier lets questions through | unset | Production, Preview |
+| `GROQ_MODEL` | `groq.ts` | Agent model; also the fallback for the extraction model | `openai/gpt-oss-120b` | not set |
+| `GROQ_EXTRACT_MODEL` | `groq.ts` | Scope classifier and CV extraction | `GROQ_MODEL` ?? `openai/gpt-oss-20b` | not set |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `_shared/supabase.ts` | Service-role client used by every RPC | `""` | Production, Preview |
+| `RAG_DEBUG` | `rag/debug.ts` | `1` turns on the diagnostic traces (scope verdict, prompts per round, search rows with scores, fallback cause) | unset | not set |
+| `VERCEL` | `trigger-analysis.ts` | Selects the `/api/...` background URL and `waitUntil` | set by Vercel | automatic |
+| `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | frontend | API base path; auth token for chat requests | `/api` | Production, Preview |
 
-Hard-coded tunables that are not in env: `CHUNK_SIZE`, `CHUNK_OVERLAP`, `MIN_RELEVANCE`, `MIN_CANDIDATE_RELEVANCE`, `name_match_min`, `relevance_min`, `MAX_TOOL_ROUNDS`, `MAX_TOOL_RESULT_CHARS`, `RATE_LIMIT_PER_HOUR`, `MAX_UPLOAD_BYTES`, the `ts_rank_cd` weights, and the classifier timeout (4 s).
+All the tunables in `config.ts` are hard-coded constants, not environment variables. `vercel.json` sets `maxDuration: 60` for every function, which matters for problem #3. `npm run eval:rag` and `eval:scope` read `../../.env` through `--env-file-if-exists`.
 
 ---
 
 ## 6. Public interfaces
 
-### HTTP (serverless, used by the UI)
-| Method / path | Auth | Contract |
+### HTTP
+
+| Route | Auth | Contract |
 |---|---|---|
-| `POST /api/assistant/chat` | staff | Body `{message, conversation_id?}`. Response: SSE `data: {type: conversation\|tool\|delta\|sources\|error\|done}`. 429 when rate-limited. |
-| `GET /api/assistant/conversations[/:id]` | any user (own conversations only) | List of conversations, or one conversation with its messages |
-| `GET /api/assistant/documents` | staff | `[{source_document, chunks, doc_type}]` |
-| `POST /api/assistant/documents` | staff | Multipart `file`, `title?`, `doc_type?`, `replace?`. Returns 200 `{source_document, doc_type, status:"ingested", chunks}`, or 409/413/415. |
+| `POST /api/assistant/chat` | staff | Body `{message, conversation_id?}`. SSE events `{type: conversation|tool|delta|sources|error|done}`. 429 when over the rate limit |
+| `GET /api/assistant/conversations[/:id]` | any logged-in user (own conversations only) | List of conversations, or one conversation with its messages |
+| `GET /api/assistant/documents` | staff | `[{source_document, chunks, doc_type, embedded}]` |
+| `POST /api/assistant/documents` | staff | Returns 200 `{source_document, doc_type, chunks, embeddings, status}`, or 400 (no text), 409 (name exists), 413, 415. `doc_type` is `cv` or `other`; any other value falls back to `guessDocType` |
 | `DELETE /api/assistant/documents/:name` | staff | 204 or 404 |
+| `POST /api/rag-embed-background` (Vercel) or `/.netlify/functions/rag-embed-background` | **none** | `{status: ok|disabled|error, embedded}` |
 
-### HTTP (Python, not used by the UI)
-`POST /api/v1/assistant/query` → `{intent, answer, sources}`; `POST /api/v1/assistant/documents` → 202 `{task_id}`; `GET` and `DELETE /api/v1/assistant/documents[/{name}]`.
+### Shapes shared with the frontend
 
-### Postgres RPCs (service role only)
-`rag_tsquery(text)`, `search_document_chunks(q, top_k, p_doc_type)`, `list_document_chunk_counts()`, `replace_document_chunks(name, jsonb, doc_type)`, `search_candidates(q, min_years, education, top_k)`, `search_candidates_diag(...)`, `rag_name_core(text)`, `rag_like_escape(text)`.
+- `AgentEvent` (`rag/agent.ts`), parsed by `frontend/src/api/chat.ts`.
+- Source objects `doc_chunk`, `candidate`, `ranked_candidate` and `matching_explanation` (`rag/types.ts`), mirrored in `frontend/src/api/types.ts`. A `doc_chunk` may now be a merged passage: `text` spans several chunks and `chunk_index` is the first one.
+- `DocType` is `"cv" | "other"` on both sides.
 
-### TypeScript module exports other code depends on
-- `rag.ts`: `retrieveCandidates`, `retrieveDocChunks`, `getScoreBreakdown`, `ingestDocumentText`, `listDocumentCounts`, `chunkText`, `detectLanguage`, `candidateEmptyAnswer`, the types `ChunkSource`, `CandidateSource`, `DocType`
-- `agent.ts`: `runAgent`, `sanitizeHistory`, `runTool`, `toolResultContent`, `TOOLS`, `AgentEvent`
-- `scope.ts`: `classifyScope`, `refusalStream`, `REFUSALS`, `isDiscriminatoryRequest`
-- The `AgentEvent` shape is a **contract with `frontend/src/api/chat.ts`**.
+### RPCs (callable by `service_role` only)
+
+- `rag_replace_document(text, text, jsonb, boolean)`
+- `rag_search_chunks(text, vector, int, text, real, real, int)`
+- `rag_pending_chunks(int)`
+- `rag_set_embeddings(jsonb)`
+- `rag_list_documents()`
+- `rag_delete_document(text)`
+- `search_candidates(text, numeric, text, int)`
+- `search_candidates_diag(text, numeric, text)`
+
+### Module exports used outside `_shared/rag`
+
+- `assistant.ts`: `runAgent`, `sanitizeHistory`, `ingestDocument`, `getStore`, `guessDocType`, `isDocType`, `DocumentExistsError`, `EmptyDocumentError`, `ALLOWED_EXTENSIONS`, `MAX_UPLOAD_BYTES`, `ragDebug`.
+- `rag-embed-background.ts`: `embedPending`, `embeddingsEnabled`.
+- `scope.ts`: `AgentEvent` (type only).
+- `scripts/rag-demo.ts`: `ingestPages`, `retrieveDocChunks`.
+- `scripts/eval-rag.ts`: `runAgent`, `sanitizeHistory`, `ingestPages`, `guessDocType`, `embedPending`, `embeddingsEnabled`, `setStore`, `FALLBACK_ANSWER`, `QUOTA_ANSWER`.
+
+Everything else the barrel exports is used only inside the module or by tests: `chunkText`, `documentTitle`, `headingOf`, `splitRanges`, `normalizeText`, `relevance`, `mergeAdjacent`, `focusText`, `clampInt`, `optionalNumber`, `unverifiedCitations`, `supabaseStore`, `EmbeddingError`, `embedTexts`, `extractDocument`, `FINAL_ROUND_INSTRUCTION`.
 
 ---
 
-## 7. Problems and improvements
+## 7. Open problems and improvements
 
 Severity: 🔴 high · 🟠 medium · 🟡 low.
 
-### Retrieval quality
-1. 🔴 **No semantic retrieval in the live stack.** Search is purely lexical, so paraphrases and synonyms are missed ("rémunération" vs "gratification", "durée maximale" vs "ne peut excéder six mois", or a question in English about a French-only document whose wording differs). The comment in `groq.ts` explains why: Groq has no embeddings. **Improvement:** add embeddings (Supabase `pgvector` plus a hosted embedding API, or `gte-small` running in a Supabase Edge Function), then combine FTS and vector results with hybrid scoring (RRF).
-2. 🟠 **Chunks get cut before the model sees them.** Five chunks of about 1600 chars exceed `MAX_TOOL_RESULT_CHARS=8000`, so `toolResultContent` shortens each one to **900 chars**. The second half of each retrieved chunk, which may contain the answer, never reaches the LLM. **Improvement:** use smaller chunks (about 800 chars), raise the budget for `search_documents`, or keep the passage around the matched terms (`ts_headline`) instead of the first N chars.
-3. 🟠 **`dedupeAdjacent` runs after the SQL `LIMIT`**, so a request for top-5 can return 3 chunks. **Improvement:** fetch about `top_k*2` rows, then deduplicate and slice.
-4. 🟠 **No reranker.** `ts_rank_cd` ordering is final. A cross-encoder or an LLM rerank over the top 20 would improve precision.
-5. 🟡 **Relevance floors are magic numbers** (`0.02`, `0.06`, `0.72`). Some are duplicated between SQL and TypeScript (`MIN_CANDIDATE_RELEVANCE` must stay in sync by hand). The chunk floor exists only in TypeScript. No retrieval evaluation set justifies them: the only eval set covers the scope filter. **Improvement:** add a labelled question → expected chunk set and measure recall@k and MRR.
-6. 🟡 **The overlap start is not aligned to a word boundary.** `start = end - 200` can land in the middle of a word, so each chunk after the first may begin with a word fragment.
-7. 🟡 **No chunk metadata** (page, section heading) is written by the TypeScript ingestion. `metadata` is always null, so citations can only name the file.
+### 🔴 1. The HNSW index is never used by `rag_search_chunks`
+The vector CTE (0019 l.307–316) joins `rag_documents` to filter on `doc_type`, and orders by `c.embedding <=> q_embedding, c.id`.
 
-### Performance
-8. 🟠 **`search_candidates` scans the whole table.** The `scored` CTE has no `search_vector @@ tsq` predicate, so `ts_rank_cd` and `word_similarity(rag_name_core(...))` run for **every candidate**, and neither the GIN index nor the trigram index (`ix_candidates_name_trgm`, built on the raw name, not on `rag_name_core`) is used. This is fine at hundreds of rows but degrades linearly. **Improvement:** pre-filter with `@@ tsq OR rag_name_core(name) %> q`, and index `rag_name_core(...)`.
-9. 🟡 When `search_documents` returns nothing it runs an extra `count(*)` on `document_chunks` to tell "empty knowledge base" apart from "no match".
-10. 🟡 The upload size limit is checked **after** `req.formData()` has already buffered the whole body.
+I checked the plans with `EXPLAIN` on PGlite (pgvector 0.8.1, 400 chunks, `enable_seqscan = off`):
 
-### Correctness / consistency
-11. 🟠 **Schema divergence between stacks.** Alembic `document_chunks` has `embedding` and no `doc_type`/`search_vector`; the Supabase version is the opposite. `.env.supabase.example` suggests pointing the Python backend at Supabase, but then either migration set fails or Python retrieval breaks (no `embedding` column). Python ingestion also ignores `doc_type` and would store CVs as `policy` through the column default.
-12. 🟠 **Python `detect_language` has drifted from the TypeScript version.** It counts accents on the **original** text, so capitals like `É` are missed (TypeScript fixed this). The word lists also differ: `était` exists only in Python. The two stacks can answer the same question in different languages.
-13. 🟡 **Python `retrieve_doc_chunks` has no relevance floor and no `doc_type` filter.** It always returns k chunks, even unrelated ones, and `_cosine_similarity` shows unrelated vectors at **50 %**.
-14. 🟡 **The Python embedding model truncates chunks.** `paraphrase-multilingual-MiniLM-L12-v2` has `max_seq_length=128` word pieces, while chunks are about 400 tokens. Only the first ~25–30 % of each chunk is embedded.
-15. 🟡 **Python ivfflat indexes are built on an empty table** (migration 0004/0005). The file documents a manual `REINDEX` after the first bulk load; until someone runs it, recall is poor. HNSW needs no training and would avoid this.
-16. 🟡 **Python query on whitespace only.** `AssistantQueryRequest.query` has `min_length=2` but does not strip whitespace. `"  "` produces a zero vector, and pgvector returns a NaN cosine distance for it.
-17. 🟡 The Python embedding cache stores **query** embeddings under the `emb:cv:` prefix. The name is misleading, and queries share TTL and eviction with CV embeddings.
-18. 🟡 **Upload TOCTOU.** The "already exists" check and `replace_document_chunks` are separate calls, so two concurrent uploads under the same title can overwrite each other despite the 409 guard.
-19. 🟡 `docs/rag-diagnostic.sql` (untracked) checks `replace_document_chunks(text,jsonb)`. Migration 0018 dropped that signature, so the check always reports `false` on an up-to-date database.
+| Query shape | Plan |
+|---|---|
+| Join + `ORDER BY distance, c.id` (as in 0019) | `Sort` → `Nested Loop` → `Index Scan using ix_rag_chunks_document`. Distance computed for every chunk, **no HNSW** |
+| Join + `ORDER BY distance` only | Same plan, **no HNSW** |
+| One table, `ORDER BY distance` | `Index Scan using ix_rag_chunks_embedding`, **HNSW used** |
+| One table, `ORDER BY distance, c.id` | `Incremental Sort` over the index order |
+| `doc_type` through `IN (subquery)` | `Sort`, **no HNSW** |
 
-### Conversation / agent
-20. 🟠 **Tool results are not kept in the history.** Only the assistant's prose is persisted and replayed. Follow-ups like "et son université ?" depend on the name having appeared in the previous answer, which the "one to three sentences" rule makes less likely. The model has to search again, and the `candidate_id` is lost. **Improvement:** save a compact summary of the tool results (IDs and names) with each assistant turn and replay it as context.
-21. 🟡 **The scope filter fails open.** This is by design, but during a Groq outage or rate limit on the 20B model, off-topic questions reach the 120B agent, which has only its prompt rules to refuse them.
-22. 🟡 **Citations depend on the prompt only.** Nothing checks that the answer names a document returned by the tool, or that cited facts appear in the chunks. A lightweight check (named file ∈ sources) would catch hallucinated sources.
-23. 🟡 **The agent does not stream when tools are used.** Each round waits for the full tool-call assembly, so latency is up to 5 sequential LLM calls plus the RPCs. Running independent tool calls of one round with `Promise.all` would help, since `runTool` currently runs them sequentially.
+**Cause.** The `doc_type` filter needs `rag_documents`, and that join is what blocks the index. The `c.id` tie-breaker adds an extra sort step on top.
 
-### Dead code / housekeeping
-24. 🟠 **The Python RAG stack is unreachable from the UI.** `backend/app/services/rag/*`, the `/api/v1/assistant/*` routes, `tasks/rag_ingestion.py`, the `DocumentChunk` model and Alembic 0004/0005 are kept, with tests, but nothing in `frontend/src` calls them. Decide whether to delete them or mark them clearly as the "self-hosted / offline" variant, and stop keeping duplicated logic in sync by hand (`language.py` ↔ `detectLanguage`, chunk constants, prompts).
-25. 🟡 `llm.py` keeps the alias `_build_llm = build_llm` for "historical callers", but nothing in `backend/` references it any more, so it is dead code.
-26. 🟡 The SQL history is noisy: `search_document_chunks` was redefined in 0007, 0008, 0010, 0013 and 0018. That is fine for migrations, but a short `docs/` page describing the current RPC contracts would help, since this file is now the only consolidated reference.
+**Impact today.** Small: at a few thousand chunks, a full scan takes milliseconds. But "HNSW" in the design is currently cosmetic, and the cost grows linearly with the corpus.
 
-### Suggested priority
-1. Add embeddings and hybrid search to the live stack (fixes #1; #14 no longer matters once the Python stack is retired).
-2. Fix how `search_documents` sizes its context (#2, #3) and add a retrieval eval set (#5).
-3. Decide what happens to the Python stack (#24, #11, #12).
-4. Pre-filter `search_candidates` (#8) and persist tool context in the conversation history (#20).
+**Fix.** The agent no longer passes `doc_type` (§3.3), so the simplest fix is now available:
+- query `rag_chunks` alone when `p_doc_type` is null, with `ORDER BY embedding <=> q LIMIT n`;
+- keep the join only for the filtered branch, with `SET LOCAL hnsw.iterative_scan = relaxed_order` (pgvector ≥ 0.8);
+- raise `hnsw.ef_search` above the maximum `match_count` (20). The default of 40 already covers it now that the ×3 pool is gone.
+
+### 🟠 2. Groq's daily token quota caps the assistant
+The account's tier allows **200,000 tokens per day** for `gpt-oss-120b`. A document question costs about 5,000–15,000 tokens: the system prompt and tool schemas are resent at every round, and a question takes up to 3 rounds. So the daily budget covers roughly 15–40 questions, shared by every user and by the evaluation. One full `npm run eval:rag` run uses about half of it.
+
+This was the cause of the unexplained "Je n'ai pas pu aboutir… Reformulez" in production (message 135). Since `eec2d94` users get an honest "limite d'utilisation atteinte, réessayez" instead (`QUOTA_ANSWER`), but the cap itself remains.
+
+**Fix:** a paid tier, or fewer tokens per question. For example, call `search_candidates` and `search_documents` in the same round for a person (see #4), or shorten the system prompt.
+
+### 🟠 3. Background embedding is capped at 60 s in production
+`vercel.json` sets `maxDuration: 60` for the catch-all API function, `rag-embed-background` included. The 15-minute limit applies only on Netlify. A large PDF (hundreds or thousands of chunks) can therefore leave chunks unembedded when the function is cut off.
+
+Nothing re-triggers the job afterwards except the next upload, and the UI keeps showing "indexation sémantique en cours". Those chunks stay searchable by full text only.
+
+**Fix:** a scheduled re-trigger (Vercel Cron, or `pg_cron` calling the endpoint), plus a "relancer l'indexation" button that reuses `triggerEmbedding`.
+
+### 🟠 4. Document questions are slow (25–45 s in the evaluation)
+For a person, the agent usually calls `search_candidates`, waits, then calls `search_documents`: three model rounds in sequence. Part of the measured time may also be the Groq SDK silently retrying 429s.
+
+**Fix:** a prompt rule to call both tools in the same round when the question is about a named person. They already run in parallel within a round.
+
+### 🟠 5. `MIN_COSINE = 0.75` is still uncalibrated
+This one value decides whether the vector branch contributes anything. If it's too high, semantic recall is lost; if it's too low, noise gets in. It also scales the displayed relevance.
+
+The evaluation of 2026-10-11 ran **full-text only**, since there's no Mistral key locally. The vector branch is therefore unmeasured.
+
+**Fix:** run `npm run eval:rag` with `MISTRAL_API_KEY` set, then set the floor from the measured distribution of related and unrelated pairs.
+
+### 🟠 6. Concurrent `embedPending` runs duplicate work
+Two uploads close together start two background runs. Both read the same `embedding IS NULL` rows and embed them twice. The results are correct but the API calls are wasted.
+
+**Fix:** claim rows in `rag_pending_chunks` with `FOR UPDATE SKIP LOCKED` and a claimed timestamp, or keep a single-flight lock.
+
+### 🟡 7. `rag_set_embeddings` payload size
+Each RPC sends 128 × 1024 floats as JSON, about 1.3 MB. That's below common limits, but the Supabase/PostgREST request-size limit hasn't been checked. Sending 32 chunks per RPC (one embedding batch) removes the doubt.
+
+### 🟡 8. The background endpoint has no authentication
+Anyone can POST `/api/rag-embed-background`. It only embeds chunks that are already pending, so the abuse potential is limited to Mistral calls on work that was due anyway. A shared secret header would close it.
+
+### 🟡 9. The bilingual stopword filter drops some French words
+`rag_tsquery` keeps a word only if it means something in **both** languages. French words that are English stopwords, such as « an » (year), are removed from queries. That's rare, but it means some short queries return nothing.
+
+### 🟡 10. Displayed relevance can look wrong
+When a chunk comes only from the vector branch with a cosine just above 0.75, the UI shows about 1 % for the top result. RRF decides the order, but the displayed number comes from a different scale.
+
+**Fix:** show a rank-based label, or calibrate the scale after #5.
+
+### 🟡 11. No reranker
+The RRF order is final. A cross-encoder or a small LLM rerank over the results would improve precision, at a cost in latency and in Groq quota (#2).
+
+### 🟡 12. The scope classifier fails open
+This is by design. During a Groq outage, off-topic questions reach the agent, which then relies on its own prompt rules. The deterministic backstop still blocks discriminatory rankings, and small talk is still answered by the fast path.
+
+### 🟡 13. The citation check is partial
+`unverifiedCitations` only recognises names that end in `.pdf`, `.docx`, `.txt` or `.md`. Titles without an extension aren't checked. It also only appends a warning, since text already streamed can't be retracted. The false positives it used to produce are fixed (§8.1).
+
+### 🟡 14. Chunking and extraction gaps
+- Single-word title-case headings such as "Formation" or "Langues" (common in CVs) aren't detected. The document title still identifies every chunk.
+- There's no OCR: a scanned PDF fails with "Aucun texte extrait".
+- DOCX files have no page numbers, so citations can name only the document.
+- Documents uploaded before `eec2d94` keep their old chunks, whose headings have no document title, until they are re-uploaded. This applies to the one CV in production today.
+
+### 🟡 15. Test-only exports in the public barrel
+About sixteen helpers are exported from `index.ts` but used only by tests (see §6). That's harmless, but it widens what looks like a public API. Tests could import from the internal modules directly.
+
+### 🟡 16. SQL is spread over several migrations
+- `rag_tsquery` was last redefined in 0019, `rag_name_core` lives in 0017 and `rag_like_escape` in 0014, and all are still in use.
+- `rag_replace_document` was redefined in 0020. 0019 is the most complete reference, but a reader must still open older files.
+- Only 0020 is recorded in Supabase's migration history; the earlier ones were applied by hand.
+- `docs/rag-diagnostic.sql` is untracked and is the only consolidated check script.
 
 ---
 
-## 8. Status after the rebuild
+## 8. Audit of 2026-10-11
 
-The Python stack was deleted. The serverless stack was rebuilt under `netlify/functions/_shared/rag/`, with migration `supabase/migrations/0019_rag_rebuild.sql` and the background function `netlify/functions/rag-embed-background.ts`. The HTTP routes, the SSE event contract, the source shapes and the env var names are unchanged.
+### 8.1 Fixed (commits `93fef5d`..`eec2d94`)
 
-### New architecture
+| Problem | Evidence | Fix | Commit |
+|---|---|---|---|
+| A chunk didn't know its document: only the chunk containing a person's name matched a search for that name, so the rest of a CV was unreachable by name | Search for "Yasmine El Amrani": only `cv-yasmine#0` and `cv-hajar#0` came back; the "list her experiences" answer missed Managem and LafargeHolcim | Document title in every heading ("Title › Section"), which feeds full-text weight A, the vectors and citations | `6779228` |
+| `dedupeAdjacent` dropped neighbouring chunks as "duplicates", although they share only the ≤ 150-character overlap (about 85 % of the text was new) | "Where did she intern in 2024?": the LafargeHolcim chunk was retrieved, then dropped, and the answer was "Aucun stage de 2024" | `mergeAdjacent` merges neighbours of the same page into one passage; the ×3 pool goes away | `082e76a`, `6c8d5ab` |
+| A chunk starting in the overlap inherited the previous section's heading | The jury's evaluation of Hajar was labelled "Yasmine El Amrani" | Cut just before a heading line, no overlap across it | `6779228` |
+| "2024 2025", "1 500 dirhams par mois" and "TOTAL 3 000 MAD" were read as headings | Probe on `headingOf` | Section numbers of one or two digits followed by a letter; no digits in an ALL-CAPS heading | `6779228` |
+| The model chose the document type badly and lost the right document, and an empty filtered search told it "don't search again" | "Le compte rendu ne mentionne aucun logiciel" (searched as `other`); "Aucun document" for the jury notes; `guessDocType` typed every non-CV document as `policy` | `doc_type` removed from the tool schema; one retry without the filter when a filtered search is empty; default type `other` | `135f7b7`, `9b76898`, `79db5dd` |
+| False "n'apparaît dans aucun extrait" warnings, saved into the history: a leading `(` was read as part of the name, U+2011 hyphens split it, and earlier turns' sources were ignored | Production message 127 (`« cv.pdf »`); 2 of 23 evaluation cases | Unicode normalisation, no leading parenthesis, earlier assistant turns accepted | `e78018e` |
+| Greetings answered with the off-topic refusal; "Que peux-tu faire ?" and a CNSS-number question refused | Production messages 96–97 and 130–133; 3 evaluation cases | `small_talk` verdict with a fixed reply; classifier prompt fixed; `cannedStream` | `56bfe09` |
+| The source was named in only about half of the answers, because the prompt contradicted itself; follow-ups answered from memory without sources; raw ranking scores ("0,955") shown | 4 evaluation cases; production messages 127 and 141 | One citation rule, "(document, p. N)"; re-retrieve for a follow-up; no raw scores | `1ba1043` |
+| The unexplained "Je n'ai pas pu aboutir… Reformulez" was a 429 from Groq's daily quota, and a failure mid-stream sent the raw provider JSON (Groq organisation id) to the browser | `RAG_DEBUG` trace of the evaluation; production message 135 | `QUOTA_ANSWER` on a 429; stream failures absorbed | `eec2d94` |
+| Internship policy removed from the product (product decision) | — | `DocType = "cv" \| "other"`, migration 0020, prompt, scope, frontend, tests | `79db5dd` |
 
-```mermaid
-flowchart LR
-  UP[POST /documents] --> EX[extract.ts<br/>pages] --> CH[chunking.ts<br/>900/150, page, heading] --> RD[(rag_replace_document<br/>atomic, 409 on name clash)]
-  RD -. trigger .-> BG[rag-embed-background] --> EM[embeddings.ts<br/>mistral-embed 1024-d] --> SE[(rag_set_embeddings)]
-  Q[POST /chat] --> SC[scope.ts] --> AG[agent.ts<br/>parallel tools, citation check]
-  AG --> TL[tools.ts] --> RT[retrieval.ts<br/>pool ×3, dedupe, slice] --> HS[(rag_search_chunks<br/>FTS ∪ HNSW, RRF)]
-  RT --> EQ[embedQuery<br/>null → FTS only]
-  TL --> CA[candidates.ts] --> SCS[(search_candidates<br/>index pre-filter)]
-```
+### 8.2 Production checks done during the audit
+- Before the audit, the knowledge base was **empty**, so every document question failed. One CV has been uploaded since (see TL;DR).
+- No secret is hard-coded in tracked files, and `.env*` is git-ignored.
 
-### Issue status
+### 8.3 Evaluation
+`npm run eval:rag` (in `netlify/functions`) plays 23 labelled cases through the same path as production: scope filter → agent → tools → real SQL.
+- **Data.** Documents live in PGlite with the real migrations, so nothing is written to Supabase. Candidates and offers are read from the real database. Some cases have several turns, building the history like `getHistory` does.
+- **Checks per case:**
+  - the expected passage is retrieved and the expected tools are called;
+  - key strings are present or absent;
+  - "not found" is admitted when it should be, and refusals are correct;
+  - the document is cited;
+  - there is no fallback and no citation warning.
+- **Options.** `--out` writes each transcript, `--only` picks cases, and `--compare a.json b.json` prints a before/after table without any API call. `RAG_DEBUG=1` adds the traces.
 
-| # | Issue | Status |
+Results of 2026-10-11 (full-text only, real Groq models):
+
+| Category | Before | After |
 |---|---|---|
-| 1 | No semantic retrieval | **Fixed.** Hybrid search: full-text and `mistral-embed` cosine (HNSW), fused with RRF in SQL. Without `MISTRAL_API_KEY` it falls back to full-text automatically. |
-| 2 | Chunks cut before reaching the model | **Fixed.** Chunks are 900 chars, so five fit whole in the 8000-char budget. When trimming is still needed, `focusText` keeps the passage around the query terms. |
-| 3 | Dedupe after `LIMIT` | **Fixed.** The RPC returns a pool of `top_k × 3`; neighbours are deduplicated **before** slicing. |
-| 4 | No reranker | **Partly.** RRF fuses two independent rankers. A cross-encoder or LLM rerank was left out on purpose: it would add latency, and it would take from the Groq quota the agent already uses. |
-| 5 | Magic floors, no eval | **Partly.** All floors live in `config.ts` and are passed to SQL as parameters. A test keeps the candidate floors in sync with SQL. An offline end-to-end test covers retrieval on a fixture. **`MIN_COSINE = 0.75` still needs calibrating on real `mistral-embed` scores.** |
-| 6 | Overlap starts mid-word | **Fixed.** The overlap starts on a sentence boundary, otherwise on a word boundary (tested). |
-| 7 | No chunk metadata | **Fixed.** Each chunk has `page` (PDF) and `heading`. The heading is indexed and embedded, and both are cited and shown in the UI. |
-| 8 | `search_candidates` full scan | **Fixed.** Pre-filter on the GIN full-text index plus a per-word trigram index on the name core. A PGlite test checks that the results match the 0017 full scan for every reference query. |
-| 9 | Extra `count(*)` on empty result | Kept on purpose (a `head` count, empty results only). |
-| 10 | Upload size checked after buffering | **Fixed.** `content-length` is checked before `formData()`, then `file.size` is checked again. |
-| 11 | Schema divergence between stacks | **Fixed.** The Python stack was removed; Alembic `0006` drops its table. |
-| 12 | Language detection drift | **Fixed.** There is one implementation now, including `était`. |
-| 13–17 | Python-only defects | **Resolved by removal.** |
-| 18 | Upload TOCTOU | **Fixed.** The existence check and the replace run in one transaction; `23505` maps to 409. |
-| 19 | Stale `docs/rag-diagnostic.sql` | **Fixed.** Rewritten for the 0019 schema, with a new vectorisation stage. |
-| 20 | Tool context lost between turns | **Fixed.** `getHistory` appends a compact `[contexte : …]` note (candidate IDs, documents and pages) to each replayed assistant turn. |
-| 21 | Scope filter fails open | Unchanged (by design). |
-| 22 | Citations not verified | **Fixed.** `unverifiedCitations` flags any document named in the answer that no tool returned, and the user sees a warning. |
-| 23 | Sequential tool calls | **Fixed.** Tool calls within one round run with `Promise.all`. |
-| 24 | Dead Python RAG | **Fixed.** Removed. |
-| 25 | Dead `_build_llm` alias | **Fixed.** Removed. |
-| 26 | Noisy SQL history | Mitigated: 0019 holds every current RAG contract in one place. |
+| Simple facts from a document | 2/5 | 4/5 |
+| Facts spanning several chunks | 2/4 | 4/4 |
+| Answer not in the data | 2/3 | 3/3 |
+| Follow-up questions | 2/3 | 3/3 |
+| Candidate / offer database | 2/3 | 3/3 |
+| Scope | 1/4 | 4/4 |
+| Prompt injection | 0/1 | 0/1 |
+| **Total** | **11/23 cases, 123/140 checks** | **21/23 cases, 133/140 checks** |
 
-### Defects found during the rebuild (also fixed in 0019)
-- **Stopword leak across languages.** French stopwords (`est`, `la`) and question words (`quelle`) survived the English parse in `rag_tsquery`, so "quelle est la" matched almost any chunk. A word is now kept only if it carries meaning in both languages and isn't a question word.
-- **Name particle collision through the CV text.** 0017 removed "El/Ben/Aït" from the indexed name but not from the question. The CV text (weight C) still contains the full name, so "Babtich El Habib" matched "Youssef El Khattabi". The candidate query is now built from `rag_name_core(q)`.
-- **`-term` exclusions ignored in candidate search.** 0017 ranked with `ts_rank_cd` but never tested `@@`, so an excluded skill still ranked. The pre-filter enforces it now.
-- **NUL bytes in PDF text** made Postgres reject the whole document. They are now stripped at extraction.
+The two failures of the "after" run had already been diagnosed when the run ended:
+- `doc-fact-table`: the model chose `doc_type: "other"` itself. Fixed in `135f7b7`. Replaying the model's six traced queries against the final code retrieves the right passage every time.
+- `injection-cv`: Groq's daily quota ran out (problem #2). In the baseline, the planted instruction was ignored.
 
-### Operations
-- Apply `0019`. It **drops** the old `document_chunks` table, so re-upload the documents afterwards.
-- Set `MISTRAL_API_KEY` on the host. The UI shows *indexation sémantique en cours* until a document's chunks are embedded.
-- To check the live system end to end: `cd netlify/functions && npm run rag:demo -- "Quelle est la durée maximale d'un stage ?"`.
+A full re-run was blocked by that same quota.
+
+`npm run eval:scope`: 54/54 (100 %), no legitimate question refused, no discriminatory request accepted, no fail-open.
+
+### 8.4 Already fixed by the rebuild (old analysis numbering)
+
+| Old # | Issue | Now |
+|---|---|---|
+| 1 | No semantic retrieval | Hybrid FTS + vectors (but see #1 above) |
+| 2 | Chunks cut before reaching the model | 900-character chunks fit the 8000-character budget; `focusText` keeps the relevant part |
+| 3 | Dedupe after `LIMIT` | Replaced by `mergeAdjacent` (§8.1) |
+| 6, 7 | Overlap cut mid-word, no metadata | Boundary-aligned overlap; `page` and "title › section" heading on every chunk |
+| 8 | `search_candidates` full scan | Index pre-filter, proven equivalent in `sql.test.ts` |
+| 10, 18 | Upload buffered before the size check, TOCTOU on names | `content-length` checked first; 409 decided inside the transaction |
+| 11–17, 24, 25 | Python stack issues and dead code | Python RAG removed |
+| 20 | Tool context lost between turns | `contextNote` |
+| 22, 23 | Unverified citations, sequential tools | `unverifiedCitations`; `Promise.all` |
+| (new) | French stopwords via the English config; name particles through the CV text; `-term` ignored for candidates; NUL bytes in PDFs | Fixed in 0019 and `extract.ts` |
