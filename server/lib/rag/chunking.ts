@@ -7,7 +7,7 @@
 //      au milieu d'un mot ;
 //   3. chaque extrait connaît sa page et l'intertitre qui le gouverne, ce qui
 //      permet une citation précise et rend l'extrait trouvable par son titre.
-import { CHUNK_OVERLAP, CHUNK_SIZE } from "./config";
+import { CHUNK_OVERLAP, CHUNK_SIZE, MIN_SECTION_CHARS } from "./config";
 import type { Chunk, PageText } from "./types";
 
 const SEPARATORS = ["\n\n", "\n", ". ", "? ", "! ", "; ", ", ", " "];
@@ -115,36 +115,39 @@ function headingPositions(text: string): { pos: number; title: string }[] {
 /**
  * Bornes [start, end[ des extraits d'un texte normalisé.
  *
- * `breaks` : positions des intertitres. Quand l'un d'eux tombe dans la seconde
- * moitié de la fenêtre, on coupe JUSTE AVANT et l'extrait suivant commence
- * exactement sur l'intertitre, sans chevauchement : sinon le début de
- * l'extrait suivant retombait dans la section précédente, dont il héritait
- * l'intertitre (le passage sur Hajar était étiqueté « Yasmine El Amrani »).
+ * `breaks` : positions des intertitres. Un extrait = une section : dès qu'un
+ * intertitre arrive après au moins `minSection` caractères, on coupe JUSTE
+ * AVANT, et l'extrait suivant commence exactement sur l'intertitre, sans
+ * chevauchement. Sinon :
+ *   - une section débordait sur la suivante, dont elle héritait l'intertitre
+ *     (le passage sur Hajar était étiqueté « Yasmine El Amrani ») ;
+ *   - un compte rendu mêlait plusieurs personnes dans un extrait, et une
+ *     recherche sur Karim remontait l'avis sur Yasmine.
+ * Une section plus courte que `minSection` reste avec la suivante.
  */
 export function splitRanges(
   text: string,
   size = CHUNK_SIZE,
   overlap = CHUNK_OVERLAP,
   breaks: number[] = [],
+  minSection = MIN_SECTION_CHARS,
 ): { start: number; end: number }[] {
   const ranges: { start: number; end: number }[] = [];
   let start = 0;
   while (start < text.length) {
     let end = Math.min(start + size, text.length);
     let atHeading = false;
-    if (end < text.length) {
-      const brk = breaks.filter((b) => b > start + size / 2 && b < end).at(-1);
-      if (brk !== undefined) {
-        end = brk;
-        atHeading = true;
-      } else {
-        const window = text.slice(start, end);
-        for (const sep of SEPARATORS) {
-          const at = window.lastIndexOf(sep);
-          if (at > size / 2) {
-            end = start + at + sep.length;
-            break;
-          }
+    const brk = breaks.find((b) => b >= start + minSection && b < end);
+    if (brk !== undefined) {
+      end = brk;
+      atHeading = true;
+    } else if (end < text.length) {
+      const window = text.slice(start, end);
+      for (const sep of SEPARATORS) {
+        const at = window.lastIndexOf(sep);
+        if (at > size / 2) {
+          end = start + at + sep.length;
+          break;
         }
       }
     }

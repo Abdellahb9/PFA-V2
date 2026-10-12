@@ -112,7 +112,7 @@ select a.id, a.candidate_id, a.offer_id, 0.88,
 -- Note du recruteur, saisie depuis l'interface.
 insert into public.candidate_notes (candidate_id, author_name, body, source)
 select c.id, 'Mme Bennani',
-       'Entretien du 12 mars : très bon en backend, disponible uniquement à partir de mars 2027.',
+       'Disponible uniquement à partir de mars 2027 ; préfère un stage à Laâyoune.',
        'ui'
   from public.candidates c
  where c.email = 'karim.benali@example.com'

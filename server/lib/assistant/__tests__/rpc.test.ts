@@ -100,6 +100,11 @@ describe("assistant_candidate_dossier", () => {
     expect(String((d.notes as Row[])[0].body)).toContain("mars 2027");
   });
 
+  it("signale les autres documents qui citent la personne (ici, le compte rendu du jury)", async () => {
+    const d = await rpc<Row>("assistant_candidate_dossier", { p_id: id(KARIM) });
+    expect(d.documents_qui_le_mentionnent).toEqual(["compte-rendu-jury-2026.docx"]);
+  });
+
   it("renvoie null pour un identifiant inconnu", async () => {
     expect(await rpc("assistant_candidate_dossier", { p_id: 999_999 })).toBeNull();
   });
@@ -182,12 +187,21 @@ describe("assistant_ranking_pool / assistant_bookings", () => {
 });
 
 describe("rag_search_chunks — CV d'un candidat", () => {
-  it("cherche dans le CV d'une personne seulement", async () => {
+  it("cherche dans le CV d'une personne et dans les passages qui la nomment", async () => {
     const yasmine = await retrieveDocChunks("Power BI", 5, null, id(YASMINE));
     expect(yasmine.length).toBeGreaterThan(0);
-    expect(yasmine.every((c) => c.candidate_id === id(YASMINE))).toBe(true);
-    expect(yasmine[0].title).toBe("CV — Yasmine El Amrani");
+    // Son CV, plus la section du compte rendu de jury qui parle d'elle.
+    expect(yasmine.every((c) => c.candidate_id === id(YASMINE) || c.text.includes("Yasmine El Amrani"))).toBe(true);
+    expect(yasmine.some((c) => c.title === "CV — Yasmine El Amrani")).toBe(true);
+    // Karim n'a pas Power BI ; la section du jury qui en parle concerne Yasmine.
     expect(await retrieveDocChunks("Power BI", 5, null, id(KARIM))).toEqual([]);
+  });
+
+  it("retrouve l'avis du jury sur une personne, et pas celui sur une autre", async () => {
+    const karim = await retrieveDocChunks("avis du jury", 5, null, id(KARIM));
+    const jury = karim.filter((c) => c.source_document === "compte-rendu-jury-2026.docx");
+    expect(jury.map((c) => c.text).join(" ")).toContain("Développement IA / NLP");
+    expect(jury.map((c) => c.text).join(" ")).not.toContain("Yasmine");
   });
 
   it("étiquette chaque extrait du nom de la personne", async () => {

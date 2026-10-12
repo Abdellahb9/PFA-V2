@@ -15,6 +15,12 @@
  */
 export const CHUNK_SIZE = 900;
 export const CHUNK_OVERLAP = 150;
+/**
+ * Un intertitre ouvre un nouvel extrait dès que le précédent a au moins cette
+ * longueur : un extrait = une section (une personne dans un compte rendu, une
+ * rubrique dans un CV). Plus court, l'extrait garde la section suivante.
+ */
+export const MIN_SECTION_CHARS = 200;
 
 // ---- Vectorisation ---------------------------------------------------------------
 

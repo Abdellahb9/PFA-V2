@@ -198,11 +198,26 @@ as $$
   query as (
     select public.rag_tsquery(q) as tsq
   ),
+  -- Extraits admissibles quand un filtre est posé. Pour un candidat : ceux de
+  -- SES documents (son CV), plus, dans les documents rattachés à personne
+  -- (compte rendu d'entretien…), ceux qui le NOMMENT — le découpage par
+  -- section met chaque personne d'un compte rendu dans son propre extrait.
+  cand as (
+    select public.rag_like_escape(trim(k.first_name || ' ' || k.last_name)) as name
+      from public.candidates k
+     where k.id = p_candidate_id
+  ),
   scope as (
-    select d.id
-      from public.rag_documents d
-     where (p_doc_type is null or d.doc_type = p_doc_type)
-       and (p_candidate_id is null or d.candidate_id = p_candidate_id)
+    select c.id
+      from public.rag_chunks c
+      join public.rag_documents d on d.id = c.document_id
+     where not (select unfiltered from params)
+       and (p_doc_type is null or d.doc_type = p_doc_type)
+       and (p_candidate_id is null
+            or d.candidate_id = p_candidate_id
+            or (d.candidate_id is null
+                and exists (select 1 from cand
+                             where (coalesce(c.heading, '') || ' ' || c.content) ilike '%' || cand.name || '%')))
   ),
   fts as (
     select c.id,
@@ -211,7 +226,7 @@ as $$
      cross join query
      where query.tsq <> ''::tsquery
        and c.search_vector @@ query.tsq
-       and c.document_id in (select id from scope)
+       and ((select unfiltered from params) or c.id in (select id from scope))
      order by rank desc, c.id
      limit (select n from params)
   ),
@@ -233,7 +248,7 @@ as $$
       from public.rag_chunks c
      where q_embedding is not null
        and not (select unfiltered from params)
-       and c.document_id in (select id from scope)
+       and c.id in (select id from scope)
      order by c.embedding <=> q_embedding
      limit (select n from params)
   ),
@@ -514,7 +529,17 @@ as $$
                          'doc_type', d.doc_type,
                          'chunks', d.chunk_count,
                          'pages', (select max(k.page) from public.rag_chunks k where k.document_id = d.id)))
-                    from public.rag_documents d where d.candidate_id = c.id)
+                    from public.rag_documents d where d.candidate_id = c.id),
+    -- Autres documents (compte rendu d'entretien, avis de jury…) qui citent la
+    -- personne par son nom : sans cette piste, l'assistant s'arrêtait au dossier.
+    'documents_qui_le_mentionnent', (
+      select jsonb_agg(distinct coalesce(d.title, d.name))
+        from public.rag_documents d
+       where d.candidate_id is distinct from c.id
+         and exists (
+           select 1 from public.rag_chunks k
+            where k.document_id = d.id
+              and k.content ilike '%' || public.rag_like_escape(trim(c.first_name || ' ' || c.last_name)) || '%'))
   ))
   from public.candidates c
   where c.id = p_id;
