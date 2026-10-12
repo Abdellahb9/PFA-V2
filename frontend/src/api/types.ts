@@ -294,7 +294,30 @@ export interface AssistantCandidateSource {
   field_of_study: string | null;
   years_experience: number;
   skills: string[];
-  similarity: number;
+  /** Statut de sa dernière candidature (outil find_candidates). */
+  status?: string | null;
+  /** Ancienne recherche plein-texte : ressemblance de mots, absente avec find_candidates. */
+  similarity?: number | null;
+}
+
+/** Dossier d'UN candidat consulté par l'assistant (outil get_candidate). */
+export interface AssistantDossierSource {
+  type: "candidate_dossier";
+  candidate_id: number;
+  name: string;
+  field_of_study: string | null;
+  /** Statut et offre de sa dernière candidature. */
+  status: string | null;
+  offer: string | null;
+}
+
+/** Note du recruteur enregistrée par l'assistant (outil save_note). */
+export interface AssistantNoteSource {
+  type: "note";
+  note_id: number;
+  candidate_id: number;
+  name: string;
+  body: string;
 }
 
 export interface AssistantChunkSource {
@@ -306,8 +329,12 @@ export interface AssistantChunkSource {
   doc_type?: DocType;
   /** Page du PDF d'origine ; absente pour un DOCX ou un texte brut. */
   page?: number | null;
-  /** Intertitre (article, section) qui gouverne l'extrait. */
+  /** Intertitre « Nom › Section » qui gouverne l'extrait. */
   heading?: string | null;
+  /** Titre affiché du document (« CV — Yasmine El Amrani »). */
+  title?: string | null;
+  /** Candidat à qui appartient le document (un CV). */
+  candidate_id?: number | null;
 }
 
 export interface AssistantExplanationSource {
@@ -355,6 +382,8 @@ export interface AssistantRankedSource {
 
 export type AssistantSource =
   | AssistantCandidateSource
+  | AssistantDossierSource
+  | AssistantNoteSource
   | AssistantRankedSource
   | AssistantChunkSource
   | AssistantExplanationSource;
@@ -368,6 +397,27 @@ export interface KnowledgeDocument {
   doc_type: DocType;
   /** Extraits déjà vectorisés : < chunks tant que la tâche de fond travaille. */
   embedded?: number;
+  /** Titre affiché (« CV — Yasmine El Amrani ») ; null = le nom du document. */
+  title?: string | null;
+  /** Candidat à qui appartient le document (un CV), sinon null. */
+  candidate_id?: number | null;
+  candidate_name?: string | null;
+}
+
+/**
+ * Réponse au dépôt d'un document. Un CV suit la chaîne CV (202, « analysis ») :
+ * le candidat est créé ou retrouvé, puis son CV est analysé et indexé en tâche
+ * de fond. Un autre document est indexé tout de suite (« ingested »).
+ */
+export type KnowledgeUploadResult =
+  | { status: "analysis"; doc_type: "cv"; source_document: string; candidate_id: number; application_id: number }
+  | { status: "ingested"; doc_type: DocType; source_document: string; chunks: number; embeddings: "pending" | "disabled" };
+
+/** Résultat de la réindexation de la base de connaissances. */
+export interface ReindexResult {
+  analyses: number;
+  indexes_sans_fichier: number;
+  ignores: number;
 }
 
 // ---- Échange d'offre ----

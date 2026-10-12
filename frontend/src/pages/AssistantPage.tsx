@@ -1,7 +1,8 @@
-// Assistant RAG : conversation en flux avec un agent à outils, plus la
-// gestion de la base documentaire (staff). L'agent choisit lui-même quel outil
-// appeler et tient compte des tours précédents — « et son université ? » porte
-// sur le candidat dont on vient de parler.
+// Assistant personnel des recruteurs : conversation en flux avec un agent qui
+// connaît chaque candidat (CV, candidatures, résultats, notes), plus la base de
+// connaissances (staff). L'agent choisit lui-même ses outils et tient compte
+// des tours précédents — « et son université ? » porte sur le candidat dont on
+// vient de parler. Un CV déposé ici crée ou complète un candidat.
 import { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -14,6 +15,7 @@ import {
   List,
   Popconfirm,
   Progress,
+  Radio,
   Row,
   Skeleton,
   Space,
@@ -26,8 +28,11 @@ import {
 } from "antd";
 import {
   DeleteOutlined,
+  EditOutlined,
   FilePdfOutlined,
+  IdcardOutlined,
   InboxOutlined,
+  ReloadOutlined,
   RobotOutlined,
   SendOutlined,
   UserOutlined,
@@ -36,6 +41,7 @@ import {
   useDeleteKnowledgeDocument,
   useIngestKnowledgeDocument,
   useKnowledgeDocuments,
+  useReindexKnowledge,
 } from "@/api/hooks";
 import { apiErrorMessage } from "@/api/client";
 import AssistantMessage from "@/components/AssistantMessage";
@@ -45,27 +51,39 @@ import { api } from "@/api/client";
 import type {
   AssistantCandidateSource,
   AssistantChunkSource,
+  AssistantDossierSource,
+  AssistantNoteSource,
   AssistantRankedSource,
   AssistantSource,
+  DocType,
 } from "@/api/types";
 
 const { Text, Paragraph } = Typography;
 
-
-/** Type de chaque document indexé, affiché dans la liste. */
-const DOC_TYPE_LABEL: Record<string, string> = {
-  cv: "CV",
-  other: "autre",
+/** Statut d'une candidature, avec les libellés de la page Candidatures. */
+const STATUS_LABEL: Record<string, { label: string; color: string }> = {
+  submitted: { label: "Reçue", color: "default" },
+  parsing: { label: "En analyse", color: "processing" },
+  parsed: { label: "Analysée", color: "blue" },
+  under_review: { label: "En revue", color: "gold" },
+  assigned: { label: "Affectée", color: "green" },
+  rejected: { label: "Refusée", color: "red" },
+  failed: { label: "Analyse échouée", color: "red" },
 };
 
+function StatusTag({ status }: { status?: string | null }) {
+  if (!status) return <Text type="secondary">—</Text>;
+  const meta = STATUS_LABEL[status] ?? { label: status, color: "default" };
+  return <Tag color={meta.color}>{meta.label}</Tag>;
+}
+
 // Exemples qui aboutissent avec les données réelles, sans identifiant codé en
-// dur. L'évaluation d'abord : c'est l'usage principal de l'assistant. Il
-// répond dans la langue de la question (FR / EN).
+// dur. L'assistant répond dans la langue de la question (FR / EN).
 const EXAMPLES = [
+  "Combien de candidats avons-nous, et combien de CV ?",
   "Qui sont les 3 meilleurs candidats en Data Science ?",
-  "Compare les candidats pour le stage Automatisme & GMAO",
-  "Qui recommandes-tu en génie électrique ?",
   "Quelles offres de stage sont ouvertes ?",
+  "Qui est affecté au stage Automatisme & GMAO ?",
 ];
 
 /** Un tour affiché : le texte diffusé + les outils utilisés + les preuves. */
@@ -89,16 +107,53 @@ function Sources({
   openIndex?: number;
 }) {
   if (!sources.length) return null;
-  const ranked = sources.filter((s) => (s as { type?: string }).type === "ranked_candidate");
-  const candidates = sources.filter((s) => (s as { type?: string }).type === "candidate");
-  const chunks = sources.filter((s) => (s as { type?: string }).type === "doc_chunk");
+  const ofType = (t: string) => sources.filter((s) => (s as { type?: string }).type === t);
 
   return (
     <>
-      <RankedSources rows={ranked as AssistantRankedSource[]} />
-      <CandidateSources rows={candidates as AssistantCandidateSource[]} />
-      <ChunkSources rows={chunks as AssistantChunkSource[]} openIndex={openIndex} />
+      <DossierSources rows={ofType("candidate_dossier") as AssistantDossierSource[]} />
+      <NoteSources rows={ofType("note") as AssistantNoteSource[]} />
+      <RankedSources rows={ofType("ranked_candidate") as AssistantRankedSource[]} />
+      <CandidateSources rows={ofType("candidate") as AssistantCandidateSource[]} />
+      <ChunkSources rows={ofType("doc_chunk") as AssistantChunkSource[]} openIndex={openIndex} />
     </>
+  );
+}
+
+/** Dossiers consultés : à qui la réponse se rapporte, et où en est sa candidature. */
+function DossierSources({ rows }: { rows: AssistantDossierSource[] }) {
+  if (!rows.length) return null;
+  return (
+    <Space direction="vertical" size={4} style={{ marginTop: 12, width: "100%" }}>
+      {rows.map((d) => (
+        <Space key={d.candidate_id} size={6} wrap>
+          <IdcardOutlined />
+          <strong>{d.name}</strong>
+          {d.field_of_study && <Text type="secondary">{d.field_of_study}</Text>}
+          <StatusTag status={d.status} />
+          {d.offer ? <Tag>{d.offer}</Tag> : d.status ? <Tag>candidature spontanée</Tag> : null}
+        </Space>
+      ))}
+    </Space>
+  );
+}
+
+/** Notes enregistrées à la demande : on montre exactement ce qui a été retenu. */
+function NoteSources({ rows }: { rows: AssistantNoteSource[] }) {
+  if (!rows.length) return null;
+  return (
+    <Space direction="vertical" size={4} style={{ marginTop: 12, width: "100%" }}>
+      {rows.map((n) => (
+        <Alert
+          key={n.note_id}
+          type="success"
+          showIcon
+          icon={<EditOutlined />}
+          message={`Note enregistrée sur ${n.name}`}
+          description={n.body}
+        />
+      ))}
+    </Space>
   );
 }
 
@@ -209,12 +264,10 @@ function CandidateSources({ rows }: { rows: AssistantCandidateSource[] }) {
           ),
         },
         {
-          title: "Pertinence",
-          dataIndex: "similarity",
-          key: "similarity",
-          render: (v: number) => (
-            <Progress percent={Math.round(v * 100)} size="small" style={{ width: 90 }} />
-          ),
+          title: "Candidature",
+          dataIndex: "status",
+          key: "status",
+          render: (s: string | null | undefined) => <StatusTag status={s} />,
         },
       ]}
     />
@@ -255,7 +308,7 @@ function ChunkSources({
         label: (
           <Space size={6} wrap>
             <FilePdfOutlined />
-            <strong>{c.source_document}</strong>
+            <strong>{c.title ?? c.source_document}</strong>
             {c.page != null ? <Tag>p. {c.page}</Tag> : <Tag>extrait #{c.chunk_index + 1}</Tag>}
             {c.heading && <Tag>{c.heading}</Tag>}
             <Tag color="green">pertinence {Math.round(c.similarity * 100)}%</Tag>
@@ -281,6 +334,9 @@ export default function AssistantPage() {
   const docs = useKnowledgeDocuments();
   const ingest = useIngestKnowledgeDocument();
   const removeDoc = useDeleteKnowledgeDocument();
+  const reindex = useReindexKnowledge();
+  // « Automatique » : le serveur reconnaît un CV à son nom (cv, resume…).
+  const [uploadType, setUploadType] = useState<"auto" | DocType>("auto");
 
   // Suivre le bas du fil pendant que la réponse s'écrit.
   useEffect(() => {
@@ -478,14 +534,51 @@ export default function AssistantPage() {
 
       {/* ---- Knowledge base panel ---- */}
       <Col xs={24} lg={8}>
-        <Card title="Base documentaire (CV et documents)">
+        <Card
+          title="Base de connaissances"
+          extra={
+            <Popconfirm
+              title="Réanalyser et réindexer tous les CV ?"
+              description="Chaque candidat muni d'un CV est réanalysé en tâche de fond."
+              okText="Réindexer"
+              cancelText="Annuler"
+              onConfirm={async () => {
+                try {
+                  const r = await reindex.mutateAsync();
+                  message.success(
+                    `${r.analyses} CV relancé(s) en analyse, ${r.indexes_sans_fichier} indexé(s) depuis le texte connu`,
+                  );
+                } catch (err) {
+                  message.error(apiErrorMessage(err, "Réindexation impossible"));
+                }
+              }}
+            >
+              <Button size="small" icon={<ReloadOutlined />} loading={reindex.isPending}>
+                Réindexer
+              </Button>
+            </Popconfirm>
+          }
+        >
+          <Radio.Group
+            size="small"
+            value={uploadType}
+            onChange={(e) => setUploadType(e.target.value)}
+            style={{ marginBottom: 8 }}
+            options={[
+              { label: "Automatique", value: "auto" },
+              { label: "CV", value: "cv" },
+              { label: "Autre document", value: "other" },
+            ]}
+            optionType="button"
+          />
           <Upload.Dragger
             accept=".pdf,.docx,.txt,.md"
             multiple={false}
             showUploadList={false}
             customRequest={async ({ file, onSuccess, onError }) => {
+              const docType: DocType | undefined = uploadType === "auto" ? undefined : uploadType;
               const send = (replace?: boolean) =>
-                ingest.mutateAsync({ file: file as File, replace });
+                ingest.mutateAsync({ file: file as File, replace, docType });
               try {
                 let res;
                 try {
@@ -502,8 +595,13 @@ export default function AssistantPage() {
                   }
                   res = await send(true);
                 }
-                const chunks = (res as { chunks?: number })?.chunks ?? 0;
-                message.success(`Document indexé — ${chunks} extrait(s) interrogeables`);
+                if (res.status === "analysis") {
+                  message.success(
+                    "CV reçu : le candidat est créé (ou retrouvé par son e-mail), son CV est en cours d'analyse.",
+                  );
+                } else {
+                  message.success(`Document indexé — ${res.chunks} extrait(s) interrogeables`);
+                }
                 onSuccess?.(undefined);
               } catch (err) {
                 message.error(apiErrorMessage(err, "Échec de l'envoi"));
@@ -514,10 +612,10 @@ export default function AssistantPage() {
             <p className="ant-upload-drag-icon">
               <InboxOutlined style={{ color: token.colorPrimary }} />
             </p>
-            <p className="ant-upload-text">Déposez un document PDF, DOCX, TXT ou MD</p>
+            <p className="ant-upload-text">Déposez un CV ou un document (PDF, DOCX, TXT, MD)</p>
             <p className="ant-upload-hint">
-              Il sera découpé et indexé en recherche plein-texte, puis interrogeable par
-              l'assistant.
+              Un CV crée ou complète la fiche du candidat, puis est analysé et indexé sous son
+              nom. Un autre document (compte rendu d'entretien…) est indexé tel quel.
             </p>
           </Upload.Dragger>
 
@@ -542,7 +640,7 @@ export default function AssistantPage() {
                 }
               />
             ) : !docs.data?.length ? (
-              <Empty description="Aucun document indexé" />
+              <Empty description="Aucun CV ni document indexé — déposez un CV ou cliquez sur Réindexer" />
             ) : (
               <List
                 size="small"
@@ -572,11 +670,10 @@ export default function AssistantPage() {
                       avatar={<FilePdfOutlined />}
                       title={
                         <Space size={6} wrap>
-                          {d.source_document}
-                          {/* La doctrine et les CV cohabitaient sans distinction :
-                              on montre ce qui est réellement indexé. */}
+                          {/* Un CV porte le nom de son candidat. */}
+                          {d.title ?? d.source_document}
                           <Tag color={d.doc_type === "cv" ? "gold" : "blue"}>
-                            {DOC_TYPE_LABEL[d.doc_type] ?? d.doc_type}
+                            {d.doc_type === "cv" ? "CV" : "autre"}
                           </Tag>
                           {/* La recherche par le sens n'atteint ce document qu'une
                               fois ses extraits vectorisés (tâche de fond). */}

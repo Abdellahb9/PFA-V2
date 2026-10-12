@@ -14,6 +14,8 @@ import type {
   DashboardData,
   Department,
   KnowledgeDocument,
+  KnowledgeUploadResult,
+  ReindexResult,
   MatchingResult,
   MyApplication,
   MySwitchRequests,
@@ -395,7 +397,8 @@ export const useKnowledgeDocuments = () =>
     queryFn: async () => (await api.get<KnowledgeDocument[]>("/assistant/documents")).data,
   });
 
-// Upload a CV or a document about candidates; chunks are stored synchronously, embeddings run in the background.
+// Dépôt dans la base de connaissances. Un CV crée ou complète un candidat et
+// part en analyse (202) ; un autre document est indexé tout de suite.
 export const useIngestKnowledgeDocument = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -418,9 +421,24 @@ export const useIngestKnowledgeDocument = () => {
       if (title) form.append("title", title);
       if (replace) form.append("replace", "true");
       if (docType) form.append("doc_type", docType);
-      return (await api.post("/assistant/documents", form)).data;
+      return (await api.post<KnowledgeUploadResult>("/assistant/documents", form)).data;
     },
-    // L'ingestion est synchrone : les extraits sont là dès la réponse.
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["knowledge-documents"] });
+      // Un CV a créé (ou complété) un candidat et une candidature spontanée.
+      if (res.status === "analysis") {
+        qc.invalidateQueries({ queryKey: ["candidates"] });
+        qc.invalidateQueries({ queryKey: ["applications"] });
+      }
+    },
+  });
+};
+
+// Réanalyse chaque candidat muni d'un CV et réindexe la base de connaissances.
+export const useReindexKnowledge = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.post<ReindexResult>("/assistant/reindex")).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["knowledge-documents"] }),
   });
 };
