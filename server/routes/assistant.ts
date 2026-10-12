@@ -2,13 +2,17 @@
 // POST   /api/assistant/chat                staff (l'assistant lit toute la base)
 // GET    /api/assistant/conversations[/:id] fils de l'appelant uniquement
 // GET    /api/assistant/documents           staff
-// POST   /api/assistant/documents           staff (multipart: file [+ title, doc_type, replace])
+// POST   /api/assistant/documents           staff (multipart: file [+ title, doc_type, replace]) ;
+//                                           un CV crée ou complète un candidat (chaîne CV)
 // DELETE /api/assistant/documents/:name     staff
-import { admin } from "../lib/supabase";
+// POST   /api/assistant/reindex             staff (réanalyse / réindexe chaque candidat)
+import { randomUUID } from "node:crypto";
+import { admin, BUCKET } from "../lib/supabase";
 import { requireStaff, requireUser } from "../lib/auth";
 import { json, fail, noContent, methodNotAllowed, readBody } from "../lib/http";
 import { cannedStream, classifyScope } from "../lib/scope";
-import { triggerEmbedding } from "../lib/trigger-analysis";
+import { triggerAnalysis, triggerEmbedding } from "../lib/trigger-analysis";
+import { createCvApplication, reindexAll } from "../lib/cv-pipeline";
 import {
   getConversation,
   getHistory,
@@ -176,6 +180,10 @@ async function handleUpload(req: Request): Promise<Response> {
   const docType = isDocType(requested) ? requested : guessDocType(name, file.name);
   const replace = String(form.get("replace") ?? "") === "true";
 
+  // Un CV appartient à un candidat : il suit la chaîne CV (candidat créé ou
+  // retrouvé par son e-mail, profil, indexation), comme une candidature.
+  if (docType === "cv") return handleCvUpload(req, file);
+
   try {
     const result = await ingestDocument({
       name,
@@ -192,6 +200,60 @@ async function handleUpload(req: Request): Promise<Response> {
     if (err instanceof EmptyDocumentError) return fail(err.message);
     console.error("document ingestion failed:", err);
     return fail(err instanceof Error ? err.message : "Échec de l'ingestion", 500);
+  }
+}
+
+/**
+ * Dépôt d'un CV depuis l'assistant : fichier dans le Storage, candidat provisoire
+ * et candidature spontanée (sans offre), puis analyse en tâche de fond. Si le CV
+ * porte l'e-mail d'un candidat existant, l'analyse rattache la candidature à
+ * celui-ci au lieu de créer un doublon.
+ */
+async function handleCvUpload(req: Request, file: File): Promise<Response> {
+  const safeName = (file.name || "cv").replace(/[^\w.-]+/g, "_").slice(-120);
+  const storagePath = `cv/assistant-${randomUUID()}-${safeName}`;
+  const { error } = await admin()
+    .storage.from(BUCKET)
+    .upload(storagePath, new Uint8Array(await file.arrayBuffer()), {
+      contentType: file.type || undefined,
+      upsert: false,
+    });
+  if (error) {
+    console.error("CV upload failed:", error.message);
+    return fail("Échec de l'enregistrement du CV", 500);
+  }
+  try {
+    const created = await createCvApplication({
+      filename: file.name || safeName,
+      storagePath,
+      contentType: file.type || null,
+      size: file.size,
+      offerId: null,
+    });
+    triggerAnalysis(created.applicationId, req);
+    return json(
+      {
+        source_document: file.name,
+        doc_type: "cv",
+        status: "analysis",
+        candidate_id: created.candidateId,
+        application_id: created.applicationId,
+      },
+      202,
+    );
+  } catch (err) {
+    console.error("CV application creation failed:", err);
+    return fail(err instanceof Error ? err.message : "Échec de la création du candidat", 500);
+  }
+}
+
+/** Réanalyse chaque candidat (CV stocké) ou indexe son texte connu. */
+async function handleReindex(req: Request): Promise<Response> {
+  try {
+    return json(await reindexAll((applicationId) => triggerAnalysis(applicationId, req)));
+  } catch (err) {
+    console.error("reindex failed:", err);
+    return fail(err instanceof Error ? err.message : "Échec de la réindexation", 500);
   }
 }
 
@@ -243,6 +305,11 @@ export default async (req: Request, ctx: { params?: Record<string, string> }): P
   // Gestion de la base documentaire : personnel uniquement.
   const user = await requireStaff(req);
   if (user instanceof Response) return user;
+
+  if (pathname.endsWith("/reindex")) {
+    if (req.method !== "POST") return methodNotAllowed();
+    return handleReindex(req);
+  }
 
   const name = ctx.params?.name;
   if (name) {

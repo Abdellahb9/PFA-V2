@@ -4,12 +4,13 @@
 // en vie jusqu'à ce qu'elle soit effectivement envoyée — sans lui, la fonction
 // peut être gelée dès la réponse au client et le déclenchement se perd.
 import { waitUntil } from "@vercel/functions";
+import { internalAuthHeader } from "./internal-auth";
 
 export function triggerBackground(fn: string, body: unknown, req: Request): void {
   const url = `${new URL(req.url).origin}/api/${fn}`;
   const promise = fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...internalAuthHeader() },
     body: JSON.stringify(body),
   }).catch(() => {});
   try {

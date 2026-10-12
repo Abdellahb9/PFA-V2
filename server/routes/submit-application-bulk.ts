@@ -2,16 +2,12 @@
 // CV already uploaded via signed URLs, with a placeholder candidate identity
 // derived from the filename. The background analysis then fills the real
 // identity (name/email) extracted from the CV text.
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { admin, BUCKET } from "../lib/supabase";
 import { requireStaff } from "../lib/auth";
 import { json, fail } from "../lib/http";
+import { createCvApplication } from "../lib/cv-pipeline";
 import { triggerAnalysis } from "../lib/trigger-analysis";
-
-// Placeholder emails carry this domain so the analyzer knows the identity is
-// provisional and must be replaced by what the CV contains.
-export const PLACEHOLDER_EMAIL_DOMAIN = "cv-import.local";
 
 const MAX_FILES = 20;
 
@@ -30,18 +26,6 @@ const schema = z.object({
     .max(MAX_FILES),
 });
 
-// "jean_dupont_CV.pdf" -> { first: "Jean", last: "Dupont" }
-function guessNameFromFilename(filename: string): { first: string; last: string } {
-  const base = filename.replace(/\.(pdf|docx)$/i, "");
-  const words = base
-    .split(/[_\-.\s]+/)
-    .filter((w) => w && !/^(cv|resume|curriculum|vitae|\d+)$/i.test(w))
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-  return {
-    first: words[0] ?? "Candidat",
-    last: words.slice(1).join(" ") || "(import CV)",
-  };
-}
 
 export default async (req: Request): Promise<Response> => {
   if (req.method !== "POST") return fail("Méthode non autorisée", 405);
@@ -71,47 +55,22 @@ export default async (req: Request): Promise<Response> => {
       continue;
     }
 
-    const name = guessNameFromFilename(cv.filename);
-    const { data: cand, error: candErr } = await sb
-      .from("candidates")
-      .insert({
-        first_name: name.first,
-        last_name: name.last,
-        email: `import-${randomUUID()}@${PLACEHOLDER_EMAIL_DOMAIN}`,
-      })
-      .select("id")
-      .single();
-    if (candErr) {
-      errors.push({ filename: cv.filename, detail: candErr.message });
+    let app: { applicationId: number };
+    try {
+      app = await createCvApplication({
+        filename: cv.filename,
+        storagePath: cv.path,
+        contentType: cv.content_type ?? null,
+        size: cv.size ?? 0,
+        offerId: b.offer_id ?? null,
+      });
+    } catch (err) {
+      errors.push({ filename: cv.filename, detail: err instanceof Error ? err.message : String(err) });
       continue;
     }
 
-    const { data: app, error: appErr } = await sb
-      .from("applications")
-      .insert({
-        candidate_id: cand.id,
-        offer_id: b.offer_id ?? null,
-        status: "submitted",
-      })
-      .select("id")
-      .single();
-    if (appErr) {
-      await sb.from("candidates").delete().eq("id", cand.id);
-      errors.push({ filename: cv.filename, detail: appErr.message });
-      continue;
-    }
-
-    await sb.from("documents").insert({
-      application_id: app.id,
-      kind: "cv",
-      filename: cv.filename,
-      storage_path: cv.path,
-      content_type: cv.content_type ?? null,
-      size: cv.size ?? 0,
-    });
-
-    triggerAnalysis(app.id, req);
-    created.push({ application_id: app.id, filename: cv.filename });
+    triggerAnalysis(app.applicationId, req);
+    created.push({ application_id: app.applicationId, filename: cv.filename });
   }
 
   if (!created.length) {

@@ -1,6 +1,6 @@
-// Extract plain text from a CV (PDF / DOCX) — pure-JS, serverless-friendly.
-import { extractText, getDocumentProxy } from "unpdf";
-import mammoth from "mammoth";
+// Indices tirés du texte d'un CV par expressions régulières (e-mail, téléphone,
+// université, années d'expérience), en appoint de l'extraction par LLM. Le texte
+// lui-même est extrait page par page par lib/rag/extract.ts.
 
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
 const PHONE_RE = /\+?\d[\d\s().-]{7,}\d/;
@@ -18,25 +18,6 @@ const UNIVERSITY_GENERIC =
   /((?:universit[ée]|facult[ée](?:\s+des\s+sciences[\w\s'’.-]*)?|[ée]cole\s+(?:nationale|sup[ée]rieure|polytechnique|mohammadia|d['’]ing[ée]nieurs)[\w\s'’.-]*|institut\s+(?:national|sup[ée]rieur)[\w\s'’.-]*)[\w\s'’.&,-]{0,40})/i;
 const UNIVERSITY_ACRONYM =
   /\b((?:ENSAM|ENSIAS|ENSEM|ENSET|ENSA|ENCG|EHTP|ESITH|INPT|FSJES|FST|EMINES|EMSI|EHEC|ENA)[\w\s'’.&,-]{0,40})/;
-
-export async function extractCvText(data: Uint8Array, filename: string): Promise<string> {
-  const name = (filename || "").toLowerCase();
-  try {
-    if (name.endsWith(".pdf")) {
-      const pdf = await getDocumentProxy(data);
-      const { text } = await extractText(pdf, { mergePages: true });
-      return Array.isArray(text) ? text.join("\n") : text;
-    }
-    if (name.endsWith(".docx")) {
-      const res = await mammoth.extractRawText({ buffer: Buffer.from(data) });
-      return res.value;
-    }
-  } catch (err) {
-    console.error("CV text extraction failed:", err);
-    return "";
-  }
-  return new TextDecoder().decode(data);
-}
 
 /**
  * Un stagiaire est un étudiant : au-delà, la valeur est presque toujours un âge

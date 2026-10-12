@@ -14,7 +14,7 @@ const { from, maybeSingle, upsert } = vi.hoisted(() => {
 });
 
 vi.mock("./supabase", () => ({ admin: () => ({ from }) }));
-vi.mock("./groq", () => ({ extractProfile: vi.fn() }));
+vi.mock("./groq", () => ({ extractProfile: vi.fn(), EXTRACTION_VERSION: "v-test" }));
 
 import { extractProfileCached, hashText } from "./cv-cache";
 import { extractProfile } from "./groq";
@@ -53,6 +53,15 @@ describe("extractProfileCached", () => {
     expect(res).toEqual({ skills: ["nlp"] });
     expect(mockedExtract).toHaveBeenCalledOnce();
     expect(upsert).toHaveBeenCalledOnce();
+  });
+
+  it("la clé contient la version du format : un ancien profil n'est pas resservi", async () => {
+    maybeSingle.mockResolvedValue({ data: null });
+    mockedExtract.mockResolvedValue({ skills: ["nlp"] });
+    await extractProfileCached("other cv");
+    const stored = upsert.mock.calls[0][0] as { text_hash: string };
+    expect(stored.text_hash).toBe(hashText("v-test\nother cv"));
+    expect(stored.text_hash).not.toBe(hashText("other cv"));
   });
 
   it("fail-open: a cache read error still returns a fresh extraction", async () => {

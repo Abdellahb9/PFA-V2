@@ -40,7 +40,7 @@ interface Route {
 const routes: Route[] = [
   { re: /^\/api\/assistant\/conversations\/([^/]+)\/?$/, fn: assistant, keys: ["id"] },
   { re: /^\/api\/assistant\/documents\/([^/]+)\/?$/, fn: assistant, keys: ["name"] },
-  { re: /^\/api\/assistant\/(?:chat|documents|conversations)\/?$/, fn: assistant },
+  { re: /^\/api\/assistant\/(?:chat|documents|conversations|reindex)\/?$/, fn: assistant },
 
   { re: /^\/api\/applications\/([^/]+)\/([^/]+)\/?$/, fn: applications, keys: ["id", "action"] },
   { re: /^\/api\/applications\/([^/]+)\/?$/, fn: applications, keys: ["id"] },

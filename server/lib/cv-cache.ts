@@ -3,7 +3,7 @@
 // cache error falls back to a fresh extraction (never blocks analysis).
 import { createHash } from "node:crypto";
 import { admin } from "./supabase";
-import { extractProfile, type ExtractedProfile } from "./groq";
+import { EXTRACTION_VERSION, extractProfile, type ExtractedProfile } from "./groq";
 
 // Entries older than this are treated as stale (configurable).
 const TTL_DAYS = Number(process.env.CV_CACHE_TTL_DAYS ?? 30);
@@ -16,7 +16,8 @@ export function hashText(text: string): string {
 export async function extractProfileCached(cvText: string): Promise<ExtractedProfile | null> {
   if (!cvText || !cvText.trim()) return null;
   const sb = admin();
-  const hash = hashText(cvText);
+  // La version du format d'extraction fait partie de la clé (voir EXTRACTION_VERSION).
+  const hash = hashText(`${EXTRACTION_VERSION}\n${cvText}`);
 
   // 1) Lookup (fail-open).
   try {

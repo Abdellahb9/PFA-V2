@@ -3,6 +3,16 @@
 // matching then runs on the normalised skills + education (no vectors).
 import Groq from "groq-sdk";
 
+/** Profil détaillé du CV, conservé dans candidates.profile et lu par l'assistant. */
+export interface CvProfile {
+  summary?: string | null;
+  experiences?: { title?: string | null; organization?: string | null; start?: string | null; end?: string | null; highlights?: string[] }[];
+  education?: { degree?: string | null; institution?: string | null; start?: string | null; end?: string | null }[];
+  projects?: { name?: string | null; description?: string | null }[];
+  languages?: { language?: string | null; level?: string | null }[];
+  certifications?: string[];
+}
+
 export interface ExtractedProfile {
   first_name?: string | null;
   last_name?: string | null;
@@ -13,7 +23,18 @@ export interface ExtractedProfile {
   university?: string | null;
   years_experience?: number | null;
   skills?: string[]; // short canonical keywords, lowercase, english
+  profile?: CvProfile | null;
 }
+
+/**
+ * Version du format d'extraction : elle entre dans la clé du cache
+ * (cv_analysis_cache), si bien qu'un CV déjà analysé avec un ancien format
+ * — sans `profile` — est réanalysé au lieu d'être resservi incomplet.
+ */
+export const EXTRACTION_VERSION = "v2-profile";
+
+/** Longueur de CV transmise au modèle : assez pour les expériences et projets. */
+const MAX_CV_CHARS = 12_000;
 
 const SYSTEM =
   "You extract structured data from CVs for an HR system. " +
@@ -31,10 +52,21 @@ const PROMPT = (cv: string) => `Extract these fields from the CV below as JSON:
   a value above 15 is almost always a mistake.
 - skills: array of short skill keywords, lowercase, in ENGLISH and canonical
   (e.g. "machine learning" not "ML", "javascript" not "JS").
+- profile: an object describing the CV, written in FRENCH, copied from the CV
+  (never invent; omit what the CV does not say):
+  - summary: 1 to 2 sentences on who the person is and what they look for
+  - experiences: [{title, organization, start, end, highlights: [short facts]}],
+    internships and jobs, most recent first, at most 8
+  - education: [{degree, institution, start, end}]
+  - projects: [{name, description}], at most 6
+  - languages: [{language, level}]
+  - certifications: [strings]
+  Dates as written in the CV (e.g. "2024", "mars 2025"). Do NOT include age,
+  date of birth, nationality, marital status, religion, health or appearance.
 
 CV:
 """
-${cv.slice(0, 6000)}
+${cv.slice(0, MAX_CV_CHARS)}
 """`;
 
 // Groq retires model ids without notice: llama-3.1-8b-instant started

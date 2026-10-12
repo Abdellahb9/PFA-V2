@@ -30,6 +30,7 @@ Aucun serveur ni conteneur à maintenir. Coût ≈ 0 sur les offres gratuites.
 | `OFFICE_ADDRESS` | API | adresse postale affichée dans l'e-mail |
 | `OFFICE_CONTACT` | API | téléphone ou e-mail de contact |
 | `DOCS_DEADLINE_DAYS` *(optionnel)* | API | entier, ex. `5` — omis, aucune phrase de délai |
+| `CRON_SECRET` *(recommandé)* | API (**secret**) | chaîne aléatoire (`openssl rand -hex 32`). Exigée par les routes internes `/api/analyze-cv` et `/api/rag-embed` ; Vercel Cron l'envoie de lui-même. Absente, ces routes restent ouvertes |
 | `RAG_DEBUG` *(optionnel)* | API | `1` : traces de diagnostic de l'assistant dans les logs |
 
 > Les variables `VITE_*` sont **intégrées au bundle client** au build (publiques
@@ -54,6 +55,9 @@ Aucun serveur ni conteneur à maintenir. Coût ≈ 0 sur les offres gratuites.
    - **`0019`** reconstruit la base de connaissances de l'assistant
      (`rag_documents` / `rag_chunks`, recherche hybride) et **vide** l'ancienne.
    - **`0020`** retire le type de document « politique » (`cv` / `other` seulement).
+   - **`0021`** rattache chaque CV à son candidat (profil détaillé, notes du
+     recruteur, fonctions de lecture de l'assistant). Ensuite, **réindexez** :
+     bouton « Réindexer » de la page Assistant, ou `npm run reindex`.
 3. **Authentication → Users → Add user** → créez votre compte admin
    (email + mot de passe **fort**). Puis dans **SQL Editor** :
    ```sql
@@ -86,6 +90,7 @@ npx vercel env add MISTRAL_API_KEY
 npx vercel env add VITE_SUPABASE_URL
 npx vercel env add VITE_SUPABASE_ANON_KEY
 npx vercel env add VITE_API_URL      # = /api
+npx vercel env add CRON_SECRET
 npx vercel --prod
 ```
 
@@ -118,6 +123,11 @@ npx vercel --prod
 - **Tâches de fond** : `/api/analyze-cv` (analyse d'un CV) et `/api/rag-embed`
   (vectorisation) sont appelées sans attente, l'invocation restant en vie grâce à
   `waitUntil` (`server/lib/trigger-analysis.ts`) ; leur durée est bornée par
-  `maxDuration` (`vercel.json`).
+  `maxDuration` (300 s, `vercel.json`). Un Cron Vercel quotidien relance
+  `/api/rag-embed` pour rattraper une vectorisation interrompue.
+- **Chaîne CV** (`server/lib/cv-pipeline.ts`) : tout CV — candidature du portail,
+  import en masse, dépôt depuis l'assistant — est lu page par page, analysé par
+  Groq (profil détaillé compris), puis indexé dans la base de connaissances
+  **sous le nom de son candidat**.
 - **Matching** : compétences normalisées + niveau d'études + **Hongrois** en
   TypeScript (`server/lib/scoring.ts`, `server/lib/hungarian.ts`).

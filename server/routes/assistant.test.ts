@@ -2,16 +2,29 @@
 // (flux SSE compris) et gestion de la base documentaire.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { runAgent, classifyScope, saveMessage, ingestDocument, store, triggerEmbedding } = vi.hoisted(
-  () => ({
-    runAgent: vi.fn(),
-    classifyScope: vi.fn(),
-    saveMessage: vi.fn(),
-    ingestDocument: vi.fn(),
-    store: { listDocuments: vi.fn(), deleteDocument: vi.fn() },
-    triggerEmbedding: vi.fn(),
-  }),
-);
+const {
+  runAgent,
+  classifyScope,
+  saveMessage,
+  ingestDocument,
+  store,
+  triggerEmbedding,
+  triggerAnalysis,
+  storageUpload,
+  createCvApplication,
+  reindexAll,
+} = vi.hoisted(() => ({
+  runAgent: vi.fn(),
+  classifyScope: vi.fn(),
+  saveMessage: vi.fn(),
+  ingestDocument: vi.fn(),
+  store: { listDocuments: vi.fn(), deleteDocument: vi.fn() },
+  triggerEmbedding: vi.fn(),
+  triggerAnalysis: vi.fn(),
+  storageUpload: vi.fn(),
+  createCvApplication: vi.fn(),
+  reindexAll: vi.fn(),
+}));
 
 vi.mock("../lib/auth", () => ({
   requireStaff: async () => ({ id: "u1", email: "admin@x.ma", role: "admin" }),
@@ -23,8 +36,11 @@ vi.mock("../lib/supabase", () => {
   const chain: Record<string, unknown> = {};
   for (const m of ["from", "select", "eq", "gte"]) chain[m] = () => chain;
   chain.then = (resolve: (v: unknown) => unknown) => resolve({ count: 0, error: null });
-  return { admin: () => chain };
+  chain.storage = { from: () => ({ upload: storageUpload }) };
+  return { admin: () => chain, BUCKET: "documents" };
 });
+
+vi.mock("../lib/cv-pipeline", () => ({ createCvApplication, reindexAll }));
 
 vi.mock("../lib/rag", async () => {
   const real = await vi.importActual<typeof import("../lib/rag")>("../lib/rag");
@@ -50,7 +66,7 @@ vi.mock("../lib/conversations", () => ({
   listConversations: vi.fn(),
 }));
 
-vi.mock("../lib/trigger-analysis", () => ({ triggerEmbedding }));
+vi.mock("../lib/trigger-analysis", () => ({ triggerEmbedding, triggerAnalysis }));
 
 import handler from "./assistant";
 import { REFUSALS } from "../lib/scope";
@@ -199,11 +215,31 @@ describe("dépôt de document", () => {
     expect(triggerEmbedding).not.toHaveBeenCalled();
   });
 
-  it("déduit le type CV du nom quand il n'est pas précisé, et transmet replace", async () => {
-    await upload({ file: pdf("cv-meriem.pdf"), replace: "true" });
+  it("transmet replace pour un document qui n'est pas un CV", async () => {
+    await upload({ file: pdf("compte-rendu.pdf"), replace: "true" });
     expect(ingestDocument).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "cv-meriem.pdf", docType: "cv", replace: true }),
+      expect.objectContaining({ name: "compte-rendu.pdf", docType: "other", replace: true }),
     );
+  });
+
+  it("fait suivre à un CV la chaîne CV : candidat, candidature spontanée, analyse", async () => {
+    storageUpload.mockResolvedValue({ error: null });
+    createCvApplication.mockResolvedValue({ applicationId: 41, candidateId: 9 });
+    const res = await upload({ file: pdf("cv-meriem.pdf") }); // type déduit du nom
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({ doc_type: "cv", status: "analysis", candidate_id: 9 });
+    expect(storageUpload.mock.calls[0][0]).toMatch(/^cv\/assistant-.+-cv-meriem\.pdf$/);
+    expect(createCvApplication).toHaveBeenCalledWith(
+      expect.objectContaining({ filename: "cv-meriem.pdf", offerId: null }),
+    );
+    expect(triggerAnalysis).toHaveBeenCalledWith(41, expect.anything());
+    expect(ingestDocument).not.toHaveBeenCalled(); // l'indexation suit l'analyse
+  });
+
+  it("répond 500 sans créer de candidat si le CV ne peut être stocké", async () => {
+    storageUpload.mockResolvedValue({ error: { message: "quota" } });
+    expect((await upload({ file: pdf("cv-x.pdf"), doc_type: "cv" })).status).toBe(500);
+    expect(createCvApplication).not.toHaveBeenCalled();
   });
 
   it("répond 409 quand le nom existe déjà (vérifié en base, sans course)", async () => {
@@ -240,5 +276,24 @@ describe("liste et suppression", () => {
     expect(store.deleteDocument).toHaveBeenCalledWith("politique stage.pdf");
     store.deleteDocument.mockResolvedValueOnce(false);
     expect((await del("absent.pdf")).status).toBe(404);
+  });
+});
+
+describe("réindexation", () => {
+  it("relance l'analyse de chaque candidature munie d'un CV", async () => {
+    reindexAll.mockImplementation(async (analyze: (id: number) => void) => {
+      analyze(7);
+      return { analyses: 1, indexes_sans_fichier: 2, ignores: 0 };
+    });
+    const res = await handler(new Request("http://local/api/assistant/reindex", { method: "POST" }), {
+      params: {},
+    });
+    expect(await res.json()).toEqual({ analyses: 1, indexes_sans_fichier: 2, ignores: 0 });
+    expect(triggerAnalysis).toHaveBeenCalledWith(7, expect.anything());
+  });
+
+  it("n'accepte que POST", async () => {
+    const res = await handler(new Request("http://local/api/assistant/reindex"), { params: {} });
+    expect(res.status).toBe(405);
   });
 });
