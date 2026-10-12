@@ -18,9 +18,15 @@ export const CHUNK_OVERLAP = 150;
 
 // ---- Vectorisation ---------------------------------------------------------------
 
-export const EMBED_MODEL = "mistral-embed";
-export const EMBED_DIM = 1024;
-export const EMBED_URL = "https://api.mistral.ai/v1/embeddings";
+/**
+ * Google Gemini, `gemini-embedding-2` : multilingue (français, anglais, arabe),
+ * 8 192 tokens par texte. Réduit à 768 dimensions — une des tailles
+ * recommandées, que le modèle renvoie déjà normalisée ; la colonne
+ * rag_chunks.embedding est en vector(768) (migration 0022).
+ */
+export const EMBED_MODEL = "gemini-embedding-2";
+export const EMBED_DIM = 768;
+export const EMBED_URL = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:batchEmbedContents`;
 /** Textes par requête d'embeddings. */
 export const EMBED_BATCH = 32;
 /** Réessais sur 429 / 5xx, avec un délai croissant. */
@@ -39,11 +45,16 @@ export const RRF_K = 60;
 /** Rang plein-texte minimal (ts_rank_cd normalisé, dans [0, 1[). */
 export const MIN_FTS_RANK = 0.02;
 /**
- * Cosinus minimal pour mistral-embed. Ses similarités sont tassées vers le
- * haut : deux textes sans rapport tournent autour de 0,6-0,7. En dessous de ce
- * plancher, un extrait n'est retenu que s'il partage des termes avec la question.
+ * Cosinus minimal de la branche vectorielle. En dessous, un extrait n'est
+ * retenu que s'il partage des termes avec la question.
+ *
+ * Valeur PROVISOIRE pour gemini-embedding-2 (requêtes et documents encodés en
+ * mode recherche asymétrique) : à calibrer avec `npm run eval:rag` une fois
+ * GEMINI_API_KEY disponible — trop haut, la recherche par le sens se tait ;
+ * trop bas, du bruit entre. L'ancien 0,75 était propre à mistral-embed, dont
+ * les cosinus étaient tassés vers le haut.
  */
-export const MIN_COSINE = 0.75;
+export const MIN_COSINE = 0.6;
 
 // ---- Recherche de candidats -------------------------------------------------------
 // Doivent rester égaux à `relevance_min` et `name_match_min` de search_candidates.

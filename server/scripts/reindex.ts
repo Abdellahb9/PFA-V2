@@ -4,7 +4,7 @@
 //   npm run reindex
 //
 // Pour chaque candidat : son dernier CV stocké est réanalysé (profil, CV indexé
-// sous son nom, vecteurs si MISTRAL_API_KEY), ou, sans fichier, son texte de CV
+// sous son nom, vecteurs si GEMINI_API_KEY), ou, sans fichier, son texte de CV
 // connu est indexé tel quel. Mêmes règles que le bouton « Réindexer » de la page
 // Assistant (POST /api/assistant/reindex), mais les analyses tournent ici l'une
 // après l'autre, sans tâche de fond.

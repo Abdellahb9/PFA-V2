@@ -92,13 +92,15 @@ export function conceptEmbedding(text: string): number[] {
   return v.map((x) => x / norm);
 }
 
-/** Remplace `fetch` vers l'API Mistral par le vectoriseur déterministe. */
-export function fakeMistralFetch(): typeof fetch {
+/** Remplace `fetch` vers l'API Gemini (batchEmbedContents) par le vectoriseur déterministe. */
+export function fakeGeminiFetch(): typeof fetch {
   return (async (_url: unknown, init?: RequestInit) => {
-    const body = JSON.parse(String(init?.body ?? "{}")) as { input: string[] };
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      requests: { content: { parts: { text: string }[] } }[];
+    };
     return new Response(
       JSON.stringify({
-        data: body.input.map((text, index) => ({ index, embedding: conceptEmbedding(text) })),
+        embeddings: body.requests.map((r) => ({ values: conceptEmbedding(r.content.parts[0].text) })),
       }),
       { status: 200, headers: { "content-type": "application/json" } },
     );

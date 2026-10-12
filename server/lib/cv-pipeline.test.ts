@@ -51,12 +51,12 @@ describe("indexCandidateCv", () => {
       title: "CV — Yasmine El Amrani",
       headingTitle: "Yasmine El Amrani",
     });
-    expect(embedPending).not.toHaveBeenCalled(); // sans clé Mistral
+    expect(embedPending).not.toHaveBeenCalled(); // sans clé Gemini
   });
 
   it("vectorise aussitôt quand les embeddings sont actifs, sans échouer si l'API tombe", async () => {
     enabled.value = true;
-    embedPending.mockRejectedValue(new Error("mistral down"));
+    embedPending.mockRejectedValue(new Error("gemini down"));
     vi.spyOn(console, "warn").mockImplementation(() => {});
     await expect(indexCandidateCv(12, [{ page: null, text: "x" }])).resolves.toBe(4);
     expect(embedPending).toHaveBeenCalledOnce();

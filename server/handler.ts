@@ -98,7 +98,7 @@ export async function webHandler(request: Request): Promise<Response> {
         hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
         hasServiceKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
         hasGroqKey: Boolean(process.env.GROQ_API_KEY),
-        hasMistralKey: Boolean(process.env.MISTRAL_API_KEY),
+        hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
       }),
       { status: 200, headers: { "content-type": "application/json" } },
     );

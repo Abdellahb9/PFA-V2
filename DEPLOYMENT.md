@@ -4,7 +4,7 @@
 [ Vercel ]    Frontend React (statique) + une fonction Node (server/, via api/[...path].ts)
 [ Supabase ]  Postgres (schéma + RLS + pgvector) · Storage (CV) · Auth (staff & candidats)
 [ Groq ]      LLM free tier — extraction des CV, assistant
-[ Mistral ]   mistral-embed — recherche par le sens dans la base de connaissances (optionnel)
+[ Gemini ]    gemini-embedding-2 — recherche par le sens dans la base de connaissances (optionnel)
 ```
 
 Aucun serveur ni conteneur à maintenir. Coût ≈ 0 sur les offres gratuites.
@@ -20,7 +20,7 @@ Aucun serveur ni conteneur à maintenir. Coût ≈ 0 sur les offres gratuites.
 | `GROQ_API_KEY` | API (**secret**) | console.groq.com → API Keys |
 | `GROQ_MODEL` *(optionnel)* | API | modèle de l'assistant, défaut `openai/gpt-oss-120b` |
 | `GROQ_EXTRACT_MODEL` *(optionnel)* | API | modèle d'extraction des CV, défaut `openai/gpt-oss-20b` |
-| `MISTRAL_API_KEY` *(recommandé)* | API (**secret**) | console.mistral.ai → API Keys. Vectorise la base de connaissances (`mistral-embed`) ; absente, l'assistant reste en recherche plein-texte |
+| `GEMINI_API_KEY` *(recommandé)* | API (**secret**) | Google AI Studio (aistudio.google.com) → Get API key. Vectorise la base de connaissances (`gemini-embedding-2`, 768 dimensions) ; absente, l'assistant reste en recherche plein-texte |
 | `VITE_SUPABASE_URL` | build frontend | identique à `SUPABASE_URL` |
 | `VITE_SUPABASE_ANON_KEY` | build frontend | Supabase → Settings → API → `anon` |
 | `VITE_API_URL` | build frontend | `/api` |
@@ -35,7 +35,7 @@ Aucun serveur ni conteneur à maintenir. Coût ≈ 0 sur les offres gratuites.
 
 > Les variables `VITE_*` sont **intégrées au bundle client** au build (publiques
 > par conception). Ne mettez **jamais** `SUPABASE_SERVICE_ROLE_KEY`,
-> `GROQ_API_KEY`, `MISTRAL_API_KEY` ni `RESEND_API_KEY` dans une variable `VITE_*`.
+> `GROQ_API_KEY`, `GEMINI_API_KEY` ni `RESEND_API_KEY` dans une variable `VITE_*`.
 
 > `RESEND_API_KEY`, `MAIL_FROM`, `OFFICE_*` et `DOCS_DEADLINE_DAYS` ne servent
 > qu'à l'e-mail envoyé au stagiaire après un échange d'offre approuvé. Si
@@ -56,8 +56,11 @@ Aucun serveur ni conteneur à maintenir. Coût ≈ 0 sur les offres gratuites.
      (`rag_documents` / `rag_chunks`, recherche hybride) et **vide** l'ancienne.
    - **`0020`** retire le type de document « politique » (`cv` / `other` seulement).
    - **`0021`** rattache chaque CV à son candidat (profil détaillé, notes du
-     recruteur, fonctions de lecture de l'assistant). Ensuite, **réindexez** :
-     bouton « Réindexer » de la page Assistant, ou `npm run reindex`.
+     recruteur, fonctions de lecture de l'assistant).
+   - **`0022`** passe les vecteurs à Gemini (`gemini-embedding-2`, 768
+     dimensions) : les anciens vecteurs Mistral sont effacés.
+   - Ensuite, avec `GEMINI_API_KEY` en place, **réindexez** : bouton
+     « Réindexer » de la page Assistant, ou `npm run reindex`.
 3. **Authentication → Users → Add user** → créez votre compte admin
    (email + mot de passe **fort**). Puis dans **SQL Editor** :
    ```sql
@@ -86,7 +89,7 @@ npx vercel link                      # projet pfa-v2
 npx vercel env add SUPABASE_URL
 npx vercel env add SUPABASE_SERVICE_ROLE_KEY
 npx vercel env add GROQ_API_KEY
-npx vercel env add MISTRAL_API_KEY
+npx vercel env add GEMINI_API_KEY
 npx vercel env add VITE_SUPABASE_URL
 npx vercel env add VITE_SUPABASE_ANON_KEY
 npx vercel env add VITE_API_URL      # = /api

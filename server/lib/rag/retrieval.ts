@@ -21,8 +21,8 @@ const round4 = (n: number) => Math.round(n * 10000) / 10000;
 /**
  * Pertinence affichée, ABSOLUE et comparable d'une requête à l'autre :
  * le meilleur des deux signaux, le cosinus étant recalé de [MIN_COSINE, 1]
- * vers [0, 1] (mistral-embed tasse ses scores vers le haut : un cosinus brut de
- * 0,7 afficherait « 70 % » pour un passage sans rapport).
+ * vers [0, 1] : un cosinus brut n'est pas une probabilité, et ne serait pas
+ * comparable au rang plein-texte (un passage sans rapport peut dépasser 0,5).
  */
 export function relevance(ftsRank: number, cosine: number | null): number {
   const vec = cosine == null ? 0 : Math.max(0, (cosine - MIN_COSINE) / (1 - MIN_COSINE));

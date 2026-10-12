@@ -74,7 +74,7 @@ export async function candidateIds(db: PGlite): Promise<Record<string, number>> 
 
 /**
  * Base complète : migrations + seed + CV indexés (plein-texte ; les vecteurs
- * dépendent de MISTRAL_API_KEY ou d'un faux vectoriseur, au choix de l'appelant).
+ * dépendent de GEMINI_API_KEY ou d'un faux vectoriseur, au choix de l'appelant).
  * Installe aussi le stockage RAG PGlite (setStore) ; l'appelant installe le
  * client RPC s'il en a besoin (setRpcClient(pgliteRpc(db))).
  */

@@ -21,7 +21,7 @@ Tout tourne sur **Vercel** (aucun serveur à maintenir) :
 [ Vercel ]    frontend/ (React, statique)  +  api/[...path].ts → server/ (une fonction Node)
 [ Supabase ]  Postgres (schéma + RLS + pgvector) · Storage (CV) · Auth (staff & candidats)
 [ Groq ]      LLM gpt-oss — extraction des CV, assistant
-[ Mistral ]   mistral-embed — vecteurs de la base de connaissances (optionnel)
+[ Gemini ]    gemini-embedding-2 — vecteurs de la base de connaissances (optionnel)
 ```
 
 ---
@@ -33,7 +33,7 @@ Tout tourne sur **Vercel** (aucun serveur à maintenir) :
 | Frontend | React 18, TypeScript, Vite, Redux Toolkit, Ant Design, Recharts, React Query |
 | API | Fonctions Vercel (Node, Web `Request`/`Response`), TypeScript, Zod, bundlé par esbuild |
 | Données | Supabase : Postgres + `pgvector` + `pg_trgm`, Storage, Auth |
-| IA | Groq (`openai/gpt-oss-120b` pour l'assistant, `gpt-oss-20b` pour l'extraction des CV), Mistral `mistral-embed`, `unpdf` / `mammoth` pour le texte |
+| IA | Groq (`openai/gpt-oss-120b` pour l'assistant, `gpt-oss-20b` pour l'extraction des CV), Google `gemini-embedding-2` (vecteurs), `unpdf` / `mammoth` pour le texte |
 | Tests | Vitest (API, avec PGlite pour exécuter les vraies migrations), Vitest + Testing Library (frontend) |
 
 ---

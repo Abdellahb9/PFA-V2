@@ -1,7 +1,7 @@
 // Tâche de fond (bornée par maxDuration, vercel.json) : vectorise les extraits
 // en attente. Déclenchée après chaque dépôt de document, et chaque jour par
 // Vercel Cron (vercel.json) pour rattraper un lot après une panne de l'API
-// Mistral ou l'ajout tardif de MISTRAL_API_KEY.
+// Gemini ou l'ajout tardif de GEMINI_API_KEY.
 //
 // Idempotente et sans argument : elle ne traite que les extraits sans vecteur.
 import { rejectUnlessInternal } from "../lib/internal-auth";

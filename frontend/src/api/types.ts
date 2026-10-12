@@ -284,7 +284,7 @@ export interface DashboardData {
 // ---- Assistant RAG ----
 // `similarity` est un score ABSOLU dans [0, 1], comparable d'une requête à
 // l'autre. Pour un candidat : rang plein-texte ou correspondance de nom. Pour un
-// extrait : le meilleur du rang plein-texte et du cosinus (mistral-embed)
+// extrait : le meilleur du rang plein-texte et du cosinus (gemini-embedding-2)
 // recalé au-dessus de son plancher. Jamais normalisé sur le meilleur résultat.
 export interface AssistantCandidateSource {
   type: "candidate";
