@@ -87,6 +87,8 @@ function toSource(r: SearchRow): ChunkSource {
     doc_type: r.doc_type,
     page: r.page,
     heading: r.heading,
+    title: r.title,
+    candidate_id: r.candidate_id,
   };
 }
 
@@ -94,6 +96,7 @@ export async function retrieveDocChunks(
   query: string,
   topK = DEFAULT_TOP_K,
   docType: DocType | null = null,
+  candidateId: number | null = null,
 ): Promise<ChunkSource[]> {
   const k = Math.min(MAX_TOP_K, Math.max(1, Math.trunc(topK) || DEFAULT_TOP_K));
   const q = (query ?? "").trim();
@@ -108,6 +111,7 @@ export async function retrieveDocChunks(
     minFts: MIN_FTS_RANK,
     minCosine: MIN_COSINE,
     rrfK: RRF_K,
+    candidateId,
   });
 
   // La RPC trie déjà par score RRF ; on ne réordonne pas.
@@ -115,6 +119,7 @@ export async function retrieveDocChunks(
   ragDebug("retrieval", {
     query: q,
     doc_type: docType,
+    candidate_id: candidateId,
     vector: embedding != null,
     rows: rows.map((r) => ({
       doc: r.source_document,

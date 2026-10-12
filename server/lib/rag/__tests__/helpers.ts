@@ -110,11 +110,11 @@ export function fakeMistralFetch(): typeof fetch {
 export function pgliteStore(db: PGlite): RagStore {
   const num = (v: unknown) => Number(v ?? 0);
   return {
-    async replaceDocument(name, docType, chunks, replace) {
+    async replaceDocument(name, docType, chunks, replace, link = {}) {
       try {
         const res = await db.query<{ r: { document_id: number; chunks: number } }>(
-          "select public.rag_replace_document($1, $2, $3::jsonb, $4) as r",
-          [name, docType, JSON.stringify(chunks), replace],
+          "select public.rag_replace_document($1, $2, $3::jsonb, $4, $5, $6) as r",
+          [name, docType, JSON.stringify(chunks), replace, link.candidateId ?? null, link.title ?? null],
         );
         return { documentId: num(res.rows[0].r.document_id), chunks: num(res.rows[0].r.chunks) };
       } catch (err) {
@@ -137,7 +137,7 @@ export function pgliteStore(db: PGlite): RagStore {
     },
     async searchChunks(p) {
       const res = await db.query<Record<string, unknown>>(
-        `select * from public.rag_search_chunks($1, $2::extensions.vector, $3, $4, $5, $6, $7)`,
+        `select * from public.rag_search_chunks($1, $2::extensions.vector, $3, $4, $5, $6, $7, $8)`,
         [
           p.query,
           p.embedding ? JSON.stringify(p.embedding) : null,
@@ -146,6 +146,7 @@ export function pgliteStore(db: PGlite): RagStore {
           p.minFts,
           p.minCosine,
           p.rrfK,
+          p.candidateId ?? null,
         ],
       );
       return res.rows.map(
@@ -160,6 +161,8 @@ export function pgliteStore(db: PGlite): RagStore {
           fts_rank: num(r.fts_rank),
           cosine: r.cosine == null ? null : num(r.cosine),
           score: num(r.score),
+          title: (r.title as string | null) ?? null,
+          candidate_id: r.candidate_id == null ? null : num(r.candidate_id),
         }),
       );
     },
@@ -171,6 +174,9 @@ export function pgliteStore(db: PGlite): RagStore {
           chunks: num(r.chunks),
           doc_type: r.doc_type as DocType,
           embedded: num(r.embedded),
+          title: (r.title as string | null) ?? null,
+          candidate_id: r.candidate_id == null ? null : num(r.candidate_id),
+          candidate_name: (r.candidate_name as string | null) ?? null,
         }),
       );
     },

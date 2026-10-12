@@ -10,7 +10,7 @@ import { chunkPages, documentTitle } from "./chunking";
 import { EMBED_BATCH } from "./config";
 import { embeddingInput, embeddingsEnabled, embedTexts } from "./embeddings";
 import { extractDocument } from "./extract";
-import { getStore } from "./store";
+import { getStore, type DocumentLink } from "./store";
 import type { Chunk, DocType, PageText } from "./types";
 
 export interface IngestResult {
@@ -28,6 +28,19 @@ export class EmptyDocumentError extends Error {
   }
 }
 
+/**
+ * Nom (unique) du document qui porte le CV d'un candidat : un seul CV indexé
+ * par personne, remplacé à chaque nouvelle analyse.
+ */
+export function cvDocumentName(candidateId: number): string {
+  return `cv-candidat-${candidateId}`;
+}
+
+/** Titre affiché du CV d'un candidat, repris dans les citations. */
+export function cvTitle(candidateName: string): string {
+  return `CV — ${candidateName.trim()}`;
+}
+
 /** Devine le type d'un document à partir de son titre et de son nom de fichier. */
 export function guessDocType(title: string, filename: string): DocType {
   return /(^|[^a-z])cv([^a-z]|$)|resume|résumé|curriculum/i.test(`${title} ${filename}`)
@@ -41,10 +54,16 @@ export async function ingestPages(
   pages: PageText[],
   docType: DocType,
   replace: boolean,
+  link: DocumentLink & { headingTitle?: string | null } = {},
 ): Promise<IngestResult> {
-  const chunks: Chunk[] = chunkPages(pages, documentTitle(name, pages));
+  // Le titre des intertitres : celui imposé (le nom du candidat pour un CV),
+  // sinon déduit du document.
+  const chunks: Chunk[] = chunkPages(pages, link.headingTitle ?? documentTitle(name, pages));
   if (!chunks.length) throw new EmptyDocumentError();
-  const res = await getStore().replaceDocument(name, docType, chunks, replace);
+  const res = await getStore().replaceDocument(name, docType, chunks, replace, {
+    candidateId: link.candidateId ?? null,
+    title: link.title ?? null,
+  });
   return {
     source_document: name,
     doc_type: docType,

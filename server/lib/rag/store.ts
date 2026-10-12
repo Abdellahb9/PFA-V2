@@ -14,6 +14,14 @@ export interface SearchParams {
   minFts: number;
   minCosine: number;
   rrfK: number;
+  /** Ne chercher que dans les documents de ce candidat (son CV). */
+  candidateId?: number | null;
+}
+
+/** Rattachement facultatif d'un document : à un candidat, avec un titre affiché. */
+export interface DocumentLink {
+  candidateId?: number | null;
+  title?: string | null;
 }
 
 export interface PendingChunk {
@@ -29,6 +37,7 @@ export interface RagStore {
     docType: DocType,
     chunks: Chunk[],
     replace: boolean,
+    link?: DocumentLink,
   ): Promise<{ documentId: number; chunks: number }>;
   pendingChunks(limit: number): Promise<PendingChunk[]>;
   setEmbeddings(items: { id: number; embedding: number[] }[]): Promise<number>;
@@ -52,12 +61,14 @@ export class DocumentExistsError extends Error {
 const num = (v: unknown) => Number(v ?? 0);
 
 export const supabaseStore: RagStore = {
-  async replaceDocument(name, docType, chunks, replace) {
+  async replaceDocument(name, docType, chunks, replace, link = {}) {
     const { data, error } = await admin().rpc("rag_replace_document", {
       p_name: name,
       p_doc_type: docType,
       p_chunks: chunks,
       p_replace: replace,
+      p_candidate_id: link.candidateId ?? null,
+      p_title: link.title ?? null,
     });
     if (error) {
       if (error.code === "23505") throw new DocumentExistsError(name);
@@ -90,6 +101,7 @@ export const supabaseStore: RagStore = {
       p_min_fts: p.minFts,
       p_min_cosine: p.minCosine,
       p_rrf_k: p.rrfK,
+      p_candidate_id: p.candidateId ?? null,
     });
     if (error) throw new Error(error.message);
     return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
@@ -103,6 +115,8 @@ export const supabaseStore: RagStore = {
       fts_rank: num(r.fts_rank),
       cosine: r.cosine == null ? null : num(r.cosine),
       score: num(r.score),
+      title: (r.title as string | null) ?? null,
+      candidate_id: r.candidate_id == null ? null : num(r.candidate_id),
     }));
   },
 
@@ -114,6 +128,9 @@ export const supabaseStore: RagStore = {
       chunks: num(r.chunks),
       doc_type: (r.doc_type as DocType) ?? "other",
       embedded: num(r.embedded),
+      title: (r.title as string | null) ?? null,
+      candidate_id: r.candidate_id == null ? null : num(r.candidate_id),
+      candidate_name: (r.candidate_name as string | null) ?? null,
     }));
   },
 

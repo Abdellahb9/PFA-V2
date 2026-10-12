@@ -21,6 +21,8 @@ export { candidateEmptyAnswer, getScoreBreakdown, retrieveCandidates } from "./c
 export {
   embedPending,
   EmptyDocumentError,
+  cvDocumentName,
+  cvTitle,
   guessDocType,
   ingestDocument,
   ingestPages,

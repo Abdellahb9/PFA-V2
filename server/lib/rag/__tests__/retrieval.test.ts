@@ -19,6 +19,8 @@ const row = (doc: string, index: number, fts: number, cosine: number | null = nu
   fts_rank: fts,
   cosine,
   score: 1 / (60 + index),
+  title: null,
+  candidate_id: null,
 });
 
 /** La forme publiée à l'agent et à l'interface (pertinence = rang plein-texte ici). */
@@ -58,6 +60,7 @@ describe("retrieveDocChunks", () => {
       minFts: MIN_FTS_RANK,
       minCosine: MIN_COSINE,
       rrfK: RRF_K,
+      candidateId: null,
     });
   });
 
@@ -122,6 +125,8 @@ describe("retrieveDocChunks", () => {
       doc_type: "other",
       page: 1,
       heading: "Article 1",
+      title: null,
+      candidate_id: null,
     });
   });
 

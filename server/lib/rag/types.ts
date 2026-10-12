@@ -37,6 +37,10 @@ export interface ChunkSource {
   doc_type: DocType;
   page: number | null;
   heading: string | null;
+  /** Titre affiché du document (« CV — Yasmine El Amrani ») ; null = son nom. */
+  title?: string | null;
+  /** Candidat auquel appartient le document (un CV), sinon null. */
+  candidate_id?: number | null;
 }
 
 export interface CandidateSource {
@@ -86,6 +90,9 @@ export interface KnowledgeDocument {
   doc_type: DocType;
   /** Extraits déjà vectorisés ; < chunks tant que la tâche de fond travaille. */
   embedded: number;
+  title: string | null;
+  candidate_id: number | null;
+  candidate_name: string | null;
 }
 
 /** Ligne renvoyée par la RPC rag_search_chunks. */
@@ -100,4 +107,6 @@ export interface SearchRow {
   fts_rank: number;
   cosine: number | null;
   score: number;
+  title: string | null;
+  candidate_id: number | null;
 }

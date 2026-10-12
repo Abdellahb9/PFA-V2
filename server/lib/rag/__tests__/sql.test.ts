@@ -118,11 +118,20 @@ describe("migration 0019 — schéma", () => {
   });
 
   it("ne laisse les fonctions qu'au rôle de service", async () => {
-    const r = await db.query<{ anon: boolean; service: boolean }>(
-      `select has_function_privilege('anon', 'public.rag_replace_document(text,text,jsonb,boolean)', 'execute') as anon,
-              has_function_privilege('service_role', 'public.rag_replace_document(text,text,jsonb,boolean)', 'execute') as service`,
-    );
-    expect(r.rows[0]).toEqual({ anon: false, service: true });
+    for (const fn of [
+      "public.rag_replace_document(text,text,jsonb,boolean,bigint,text)",
+      "public.rag_search_chunks(text,extensions.vector,int,text,real,real,int,bigint)",
+      "public.assistant_candidate_dossier(bigint)",
+      "public.assistant_save_note(bigint,uuid,text,text,text)",
+    ]) {
+      const r = await db.query<{ anon: boolean; authed: boolean; service: boolean }>(
+        `select has_function_privilege('anon', $1, 'execute') as anon,
+                has_function_privilege('authenticated', $1, 'execute') as authed,
+                has_function_privilege('service_role', $1, 'execute') as service`,
+        [fn],
+      );
+      expect(r.rows[0], fn).toEqual({ anon: false, authed: false, service: true });
+    }
   });
 });
 
@@ -296,16 +305,39 @@ describe("rag_search_chunks — recherche hybride", () => {
     const rows = await store.searchChunks(params("stage -gratification", null));
     expect(rows.some((r) => r.content.includes("gratification"))).toBe(false);
   });
+
+  it("filtre par candidat (0021)", async () => {
+    const q = "stage six mois";
+    expect((await store.searchChunks({ ...params(q, conceptEmbedding(q)), candidateId: 999_999 }))).toEqual([]);
+  });
+
+  it("la branche vectorielle sans filtre passe par l'index HNSW (0021)", async () => {
+    // Même forme que vec_all dans rag_search_chunks : rag_chunks seule, tri par distance.
+    // 0019 joignait rag_documents et ajoutait un tri secondaire : balayage complet.
+    const v = JSON.stringify(conceptEmbedding("durée du stage"));
+    await db.exec("set enable_seqscan = off; set search_path = public, extensions");
+    try {
+      const plan = await db.query<{ "QUERY PLAN": string }>(
+        `explain select c.id from public.rag_chunks c
+          where $1::extensions.vector is not null and true
+          order by c.embedding <=> $1::extensions.vector limit 5`,
+        [v],
+      );
+      expect(plan.rows.map((r) => r["QUERY PLAN"]).join("\n")).toContain("ix_rag_chunks_embedding");
+    } finally {
+      await db.exec("reset enable_seqscan; reset search_path");
+    }
+  });
 });
 
-describe("migrations 0019 et 0020 — rejouables", () => {
+describe("migrations 0020 et 0021 — rejouables", () => {
   it("se rejouent sur une base déjà migrée et CONSERVENT les documents", async () => {
     await store.replaceDocument("rejeu.pdf", "other", [{ content: "Durée : six mois.", page: 1, heading: null }], true);
     const before = await store.listDocuments();
-    await applyMigrations(db, (f) => f >= "0019_");
+    await applyMigrations(db, (f) => f >= "0020_");
     expect(await store.listDocuments()).toEqual(before);
     expect(before.some((d) => d.source_document === "rejeu.pdf")).toBe(true);
-    // Le rejeu de 0019 ne doit pas rouvrir le type retiré par 0020.
+    // Le rejeu ne doit pas rouvrir le type retiré par 0020.
     await expect(
       store.replaceDocument("rejeu.pdf", "policy" as never, [{ content: "x", page: 1, heading: null }], true),
     ).rejects.toThrow(/doc_type invalide/);
